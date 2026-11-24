@@ -1,35 +1,21 @@
 # Desplegar el frontend en Cloudflare Pages
 
-SimuLiga se despliega en dos piezas:
+El sitio se publica como **export estático** (Next.js `output: "export"`). Hay
+dos formas de darle datos:
 
-| Pieza | Dónde | Qué hace |
+| Modo | Datos | Qué necesita |
 | --- | --- | --- |
-| `frontend/` | Cloudflare Pages | Sirve la interfaz estática (Next.js con `output: "export"`) |
-| `backend/` | Un host con Python | FastAPI + NumPy/SciPy, con las simulaciones Monte Carlo |
+| **Publicado (por defecto)** | JSON de la última simulación, en `frontend/public/data` | Nada: solo el build |
+| Con API | Respuestas en vivo de FastAPI | Un backend público y `NEXT_PUBLIC_API_URL` |
 
-Cloudflare Pages **solo sirve archivos estáticos**: no puede ejecutar el backend
-ni el optimizador de imágenes de Next.js. La app ya funciona entera en el
-cliente (no hay `fetch` en servidor, rutas API ni middleware), así que el export
-estático es suficiente.
+En el modo publicado el sitio enseña la última simulación generada, sin errores
+de conexión. El laboratorio de escenarios y la simulación de 1M quedan
+desactivados, porque necesitan el motor de simulación.
 
-## 1. Publica primero el backend
+## 1. Crea el proyecto en Cloudflare Pages
 
-La URL del backend debe ser pública y con HTTPS. En el `.env` del servidor añade
-el dominio de Pages a los orígenes permitidos por CORS:
-
-```bash
-CORS_ALLOW_ORIGINS=http://localhost:3000,https://<proyecto>.pages.dev,https://tu-dominio.com
-```
-
-Sin ese paso el navegador bloquea las llamadas y la app muestra el aviso de
-"no se pudo conectar con el motor de simulación". Opciones habituales para el
-backend: Fly.io, Render, Railway, un VPS con Docker o cualquier host que admita
-Python 3.12 y unas cuantas CPU para las simulaciones.
-
-## 2. Crea el proyecto en Cloudflare Pages
-
-En el panel de Cloudflare: **Workers & Pages → Create → Pages → Connect to Git**
-y selecciona el repositorio. Configuración:
+En el panel: **Workers & Pages → Create → Pages → Connect to Git**, elige el
+repositorio y configura:
 
 | Ajuste | Valor |
 | --- | --- |
@@ -37,20 +23,70 @@ y selecciona el repositorio. Configuración:
 | Build command | `npm run build` |
 | Build output directory | `out` |
 | Environment variable | `STATIC_EXPORT=1` |
-| Environment variable | `NEXT_PUBLIC_API_URL=https://tu-api.ejemplo.com` |
 | Environment variable | `NODE_VERSION=22` |
 
-`STATIC_EXPORT=1` es lo que activa el modo estático en
+El preset **Next.js (Static HTML Export)** ya rellena build y salida; si aparece
+otro, elige **None** y escríbelo a mano. Lo que nunca puede faltar es el root
+directory `frontend`.
+
+`STATIC_EXPORT=1` activa el modo estático en
 [`frontend/next.config.ts`](../frontend/next.config.ts): genera `out/`, marca las
 imágenes como no optimizadas y desactiva `partialPrefetching` y
-`cacheComponents`, porque la generación anticipada parcial (PPR) no existe en
-modo export. Sin esa variable, el build local sigue comportándose como siempre.
+`cacheComponents` (PPR no existe en modo export). Además, en un export estático
+la app lee por defecto los JSON publicados en lugar de llamar a la API.
 
-`NEXT_PUBLIC_API_URL` se incrusta en el bundle **en tiempo de build**: si cambia
-la URL del backend, hay que volver a desplegar. Añádela también en el entorno
-de *Preview* si quieres que las ramas de prueba funcionen.
+Cada `push` a `main` reconstruye y publica el sitio.
 
-## 3. Comprueba el build en local
+## 2. Regenera los datos publicados
+
+Los JSON de `frontend/public/data` salen de la API real. Se regeneran con el
+backend en local (necesita acceso a OpenFootball / football-data.co.uk o
+`DATA_SOURCE=demo`):
+
+```bash
+cd backend
+python scripts/export_frontend_snapshot.py
+```
+
+El script llama a la app FastAPI en proceso (no hace falta levantar el
+servidor), usa 10.000 simulaciones y la jornada actual, y escribe:
+
+| Archivo | Contenido |
+| --- | --- |
+| `manifest.json` | Fecha de generación, jornada, simulaciones y origen de los datos |
+| `season.json`, `elo.json`, `validation.json` | Temporada, ratings y backtest de LaLiga |
+| `matches-*.json`, `projection-*.json` | Partidos y proyección en modo `score` y `1x2` |
+| `champions-*.json` | Los mismos datos para SimuChampions, con sus dos modos |
+
+Opciones: `--sims 50000` para más precisión (el archivo crece) y `--out` para
+otra carpeta de destino.
+
+Revisa `manifest.json` (que `demo` sea `false`), haz commit de los JSON y push:
+
+```bash
+git add frontend/public/data
+git commit -m "data: refresh published snapshot"
+git push
+```
+
+Pages reconstruye solo y el sitio pasa a mostrar los datos nuevos. No hay un
+refresh automático: si la jornada avanza, hay que volver a ejecutar el script.
+
+## 3. Pasar a datos en vivo (cuando tengas API)
+
+Cuando publiques el backend en Fly.io, Render, Railway o un VPS:
+
+1. En el `.env` del backend añade el dominio del sitio a `CORS_ALLOW_ORIGINS`
+   (separados por comas, con `https://` y sin barra final).
+2. En Pages añade `NEXT_PUBLIC_API_URL=https://tu-api.ejemplo.com` y
+   `NEXT_PUBLIC_STATIC_DATA=0`.
+3. Vuelve a desplegar (**Deployments → Retry deployment**): las variables
+   `NEXT_PUBLIC_*` se incrustan en el build.
+
+Con `NEXT_PUBLIC_STATIC_DATA=0` se reactivan el laboratorio de escenarios y la
+simulación de 1M.
+
+## 4. Comprueba el build en local
 
 ```powershell
 cd frontend
@@ -62,20 +98,20 @@ cd frontend
 STATIC_EXPORT=1 npm run build
 ```
 
-El resultado queda en `frontend/out/` (ignorado por git). Para revisarlo:
+Queda en `frontend/out/` (ignorado por git) con los JSON en `out/data/`. Para
+servirlo hace falta un servidor que resuelva URLs limpias:
 
 ```bash
-npx serve out
+npx wrangler pages dev out
 ```
 
-Rutas generadas: `/`, `/elo`, `/escenario`, `/metodologia`, `/champions`,
-`/champions/elo`, `/champions/metodologia`, `/champions/playoff` y `404.html`.
-Cloudflare Pages resuelve `/elo` a `elo.html` automáticamente; no hace falta
-`trailingSlash` ni `_redirects`.
+Rutas generadas: `/`, `/elo`, `/escenario` (aviso de modo publicado),
+`/metodologia`, `/champions`, `/champions/elo`, `/champions/metodologia`,
+`/champions/playoff` y `404.html`.
 
-## 4. Despliegue manual con Wrangler (opcional)
+## 5. Despliegue manual (opcional)
 
-Si prefieres no conectar el repositorio:
+Sin conectar el repositorio:
 
 ```bash
 cd frontend
@@ -83,46 +119,36 @@ STATIC_EXPORT=1 npm run build
 npx wrangler pages deploy out --project-name simuliga
 ```
 
-Wrangler pedirá iniciar sesión la primera vez. El *project name* define el
-subdominio: `<project-name>.pages.dev`.
+Wrangler pide iniciar sesión la primera vez. El *project name* define el
+subdominio `<project-name>.pages.dev`.
 
-## 5. Dominio propio
+## 6. Dominio propio
 
 En **Pages → tu proyecto → Custom domains** añade el dominio y crea el CNAME que
-indique Cloudflare. Después actualiza `CORS_ALLOW_ORIGINS` en el backend para
-incluir el dominio nuevo (el de `pages.dev` puede quedarse mientras lo uses).
+indique Cloudflare. Si más adelante usas la API, incluye también ese dominio en
+`CORS_ALLOW_ORIGINS`.
 
-## 6. Detalles del despliegue
+## 7. Detalles y límites
 
 - `frontend/public/_headers` añade caché inmutable de un año para
-  `/_next/static/*`, cuyos nombres ya llevan hash.
-- Las fuentes de `next/font/google` se descargan durante el build, así que el
-  entorno de Pages necesita red (la tiene).
-- Cada push a `main` reconstruye y publica; las ramas y pull requests generan
-  despliegues de previsualización.
-- No hay variables secretas en el frontend: todo lo que empieza por
-  `NEXT_PUBLIC_` acaba en el JavaScript público. La `API_FOOTBALL_KEY` vive solo
-  en el backend.
-
-## 7. Limitaciones a tener en cuenta
-
-- **Sin servidor en Pages**: nada de `app/api/*`, middleware, ISR ni SSR. Si en
-  el futuro se añaden, habría que pasar a Workers con
-  [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare) o mover esas
-  rutas al backend.
-- **Sin optimizador de imágenes**: los escudos se sirven tal cual
-  (`images.unoptimized`).
-- **CORS sin cookies**: el backend usa `allow_credentials=False`, así que el
-  frontend y la API pueden vivir en dominios distintos sin configuración extra.
-- **Coste de CPU**: cada proyección corre 10.000 simulaciones por defecto; el
-  host del backend debe tener CPU suficiente o usar `/api/projection/full` para
-  trabajos largos.
+  `/_next/static/*`.
+- Las fuentes de `next/font/google` se descargan durante el build.
+- Sin servidor en Pages: nada de `app/api/*`, middleware, ISR ni SSR. Si algún
+  día hacen falta, habría que pasar a Workers con
+  [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare).
+- Sin optimizador de imágenes: los escudos se sirven tal cual.
+- Los datos publicados son una foto fija: cambian cuando ejecutas el script y
+  haces push, no con los resultados del día.
+- El snapshot actual ocupa ~1 MB y 15 archivos, muy por debajo de los límites
+  del plan gratuito.
 
 ## Checklist
 
-- [ ] Backend público con HTTPS y `CORS_ALLOW_ORIGINS` con el dominio de Pages.
 - [ ] Proyecto de Pages con root `frontend`, build `npm run build`, salida `out`.
-- [ ] Variables `STATIC_EXPORT=1`, `NEXT_PUBLIC_API_URL` y `NODE_VERSION`.
+- [ ] Variables `STATIC_EXPORT=1` y `NODE_VERSION=22`.
+- [ ] `frontend/public/data/manifest.json` con `demo: false` y fecha reciente.
 - [ ] Build local con `STATIC_EXPORT=1` sin errores.
-- [ ] `/api/health` y `/api/ready` responden desde el navegador en el dominio de
-      Pages (sin errores de CORS en la consola).
+- [ ] El panel, `/elo`, `/champions` y `/champions/playoff` enseñan datos; `/escenario`
+      explica que necesita el motor.
+- [ ] (Opcional) `NEXT_PUBLIC_STATIC_DATA=0` + `NEXT_PUBLIC_API_URL` cuando exista
+      backend, y su dominio en `CORS_ALLOW_ORIGINS`.
