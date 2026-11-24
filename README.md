@@ -115,6 +115,23 @@ El backend permite CORS desde `localhost:3000`, `127.0.0.1:3000` y
 | `/champions/elo` | ELO de los participantes de Champions |
 | `/champions/metodologia` | Metodología y validación de SimuChampions |
 
+## Despliegue
+
+El frontend es 100% cliente y se puede publicar como sitio estático. Con
+`STATIC_EXPORT=1` el build genera `out/` para Cloudflare Pages:
+
+```bash
+cd frontend
+STATIC_EXPORT=1 npm run build   # crea out/
+```
+
+En PowerShell: `$env:STATIC_EXPORT="1"; npm run build`.
+
+El backend va aparte (Pages no ejecuta Python): publícalo en Fly.io, Render,
+Railway o un VPS, y añade el dominio del frontend a `CORS_ALLOW_ORIGINS`. La URL
+de la API se fija en build con `NEXT_PUBLIC_API_URL`. Guía completa en
+[`docs/deploy-cloudflare.md`](docs/deploy-cloudflare.md).
+
 ## Variables de entorno
 
 Se leen de `backend/.env`. El archivo real **no se versiona**; parte de
@@ -132,6 +149,7 @@ Se leen de `backend/.env`. El archivo real **no se versiona**; parte de
 | `CLUBELO_ENABLED` | `true` | Usa ClubElo como prior de los ratings |
 | `OPENFOOTBALL_SEASON` | `2026-27` | Temporada activa en OpenFootball |
 | `PREVIOUS_OPENFOOTBALL_SEASON` | `2025-26` | Temporada usada para el replay de ELO |
+| `CORS_ALLOW_ORIGINS` | localhost:3000/3001 | Orígenes permitidos, separados por comas |
 | `CHAMPIONS_*` | — | Equivalentes para SimuChampions (`CHAMPIONS_DATA_SOURCE`, `CHAMPIONS_SEASON`, …) |
 
 ## API
