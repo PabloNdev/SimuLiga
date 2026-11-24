@@ -118,26 +118,26 @@ El backend permite CORS desde `localhost:3000`, `127.0.0.1:3000` y
 
 ## Despliegue
 
-El frontend es 100% cliente y se publica como export estático:
+El frontend se publica como export estático en un Worker de Cloudflare
+(`frontend/wrangler.jsonc` sirve `out/`):
 
 ```bash
 cd frontend
-STATIC_EXPORT=1 npm run build   # crea out/
+npm run build   # crea out/
 ```
 
-En PowerShell: `$env:STATIC_EXPORT="1"; npm run build`.
-
-Sin backend, la app lee los JSON de `frontend/public/data` (la última
-simulación publicada) y desactiva el laboratorio de escenarios y la simulación
-de 1M. Para refrescar esos datos, con el backend en local:
+`next build` activa solo el modo estático. Sin backend, la app lee los JSON de
+`frontend/public/data` (la última simulación publicada) y desactiva el
+laboratorio de escenarios y la simulación de 1M. Para refrescar esos datos, con
+el backend en local:
 
 ```bash
 cd backend
 python scripts/export_frontend_snapshot.py
 ```
 
-Después, commit de `frontend/public/data` y push: Cloudflare Pages reconstruye
-solo. Con `NEXT_PUBLIC_STATIC_DATA=0` y `NEXT_PUBLIC_API_URL=...` la app vuelve a
+Después, commit de `frontend/public/data` y push: Cloudflare reconstruye solo.
+Con `NEXT_PUBLIC_STATIC_DATA=0` y `NEXT_PUBLIC_API_URL=...` la app vuelve a
 llamar a la API en vivo (y el backend debe permitir el dominio del sitio en
 `CORS_ALLOW_ORIGINS`). Guía completa en
 [`docs/deploy-cloudflare.md`](docs/deploy-cloudflare.md).
@@ -247,7 +247,7 @@ cd frontend && npm run lint
 - [`docs/champions-calibration.md`](docs/champions-calibration.md) — ajuste del modelo de Champions.
 - [`docs/champions-elo-5y-validation.md`](docs/champions-elo-5y-validation.md) — backtest de cinco temporadas.
 - [`docs/superpowers/`](docs/superpowers) — planes y especificaciones de diseño.
-- [`docs/deploy-cloudflare.md`](docs/deploy-cloudflare.md) — despliegue en Cloudflare Pages y datos publicados.
+- [`docs/deploy-cloudflare.md`](docs/deploy-cloudflare.md) — despliegue en Cloudflare Workers y datos publicados.
 
 ## Licencia
 

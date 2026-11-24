@@ -1,0 +1,10 @@
+{
+  // Worker que solo sirve los archivos estáticos del export de Next.js.
+  // `next build` genera ./out y `wrangler deploy` lo publica tal cual.
+  "name": "simuliga",
+  "compatibility_date": "2026-11-24",
+  "assets": {
+    "directory": "./out",
+    "not_found_handling": "404-page"
+  }
+}
