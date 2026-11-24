@@ -1,0 +1,28 @@
+{
+  "home_advantage": 83.2599,
+  "nu": 0.8177,
+  "elo_scale": 400,
+  "trained_on": [
+    2020,
+    2021,
+    2022,
+    2023
+  ],
+  "fit_on": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+  ],
+  "validation": {
+    "season": 2024,
+    "home_advantage": 84.1693,
+    "nu": 0.8291,
+    "matches": 380,
+    "accuracy": 0.542105,
+    "log_loss": 0.977072,
+    "brier": 0.580246
+  },
+  "generated_at": "2026-10-20T17:45:05.573310+00:00"
+}

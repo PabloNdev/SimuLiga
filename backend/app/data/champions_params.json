@@ -1,0 +1,23 @@
+{
+  "home_advantage": 34.407,
+  "nu": 0.5152,
+  "elo_scale": 400.0,
+  "validation": {
+    "matches": 81,
+    "accuracy": 0.604938,
+    "log_loss": 0.977523,
+    "brier": 0.576177,
+    "train_home_advantage": 23.0265,
+    "train_nu": 0.5673
+  },
+  "scoreline": {
+    "home_base": 1.815,
+    "away_base": 1.477,
+    "elo_slope": 0.00146,
+    "home_advantage": 34.41,
+    "rho": -0.0603,
+    "max_goals": 10
+  },
+  "scoreline_samples": 188,
+  "generated_at": "2026-10-24T12:01:42.164788+00:00"
+}

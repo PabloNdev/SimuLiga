@@ -1,0 +1,1 @@
+"""SimuLiga backend package."""

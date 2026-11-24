@@ -1,0 +1,1 @@
+﻿"""Champions League data adapters."""
