@@ -8,6 +8,7 @@ import {
   getProjection,
   getSeason,
   postFullProjection,
+  STATIC_DATA,
 } from "@/lib/api";
 import type { Mode, ProjectionPayload, SeasonPayload } from "@/lib/types";
 import { formatProbability, formatUpdatedAt } from "@/lib/format";
@@ -305,28 +306,36 @@ export function Dashboard() {
           </button>
         </div>
 
-        <span className="controls-label">Desde J</span>
-        <select
-          className="matchday-select"
-          value={startMatchday ?? season.current_matchday}
-          onChange={(event) => changeStart(Number(event.target.value))}
-          aria-label="Jornada de inicio de la simulación"
-          title="Se conservan los resultados reales anteriores y se simula desde esta jornada."
-        >
-          {Array.from(
-            { length: season.total_matchdays },
-            (_, index) => index + 1,
-          ).map((matchday) => (
-            <option key={matchday} value={matchday}>
-              {matchday}
-              {matchday === season.current_matchday
-                ? " · actual"
-                : matchday === 1
-                  ? " · pretemporada"
-                  : ""}
-            </option>
-          ))}
-        </select>
+        {STATIC_DATA ? (
+          <span className="chip">
+            Datos de <strong>J{startMatchday ?? season.current_matchday}</strong>
+          </span>
+        ) : (
+          <>
+            <span className="controls-label">Desde J</span>
+            <select
+              className="matchday-select"
+              value={startMatchday ?? season.current_matchday}
+              onChange={(event) => changeStart(Number(event.target.value))}
+              aria-label="Jornada de inicio de la simulación"
+              title="Se conservan los resultados reales anteriores y se simula desde esta jornada."
+            >
+              {Array.from(
+                { length: season.total_matchdays },
+                (_, index) => index + 1,
+              ).map((matchday) => (
+                <option key={matchday} value={matchday}>
+                  {matchday}
+                  {matchday === season.current_matchday
+                    ? " · actual"
+                    : matchday === 1
+                      ? " · pretemporada"
+                      : ""}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
 
         <span className="controls-label">Métrica</span>
         <div className="segmented" role="group" aria-label="Métrica de la tabla">
@@ -354,17 +363,21 @@ export function Dashboard() {
         </div>
 
         <span className="controls-spacer" />
-        <button
-          type="button"
-          className="btn"
-          onClick={startFullRun}
-          disabled={fullLoading}
-        >
-          {fullLoading ? "Simulando 1M…" : "Precisión 1M"}
-        </button>
-        <Link href="/escenario" className="btn btn-primary">
-          Abrir laboratorio
-        </Link>
+        {STATIC_DATA ? null : (
+          <button
+            type="button"
+            className="btn"
+            onClick={startFullRun}
+            disabled={fullLoading}
+          >
+            {fullLoading ? "Simulando 1M…" : "Precisión 1M"}
+          </button>
+        )}
+        {STATIC_DATA ? null : (
+          <Link href="/escenario" className="btn btn-primary">
+            Abrir laboratorio
+          </Link>
+        )}
       </div>
 
       <p className="controls-hint">
@@ -372,6 +385,16 @@ export function Dashboard() {
           ? "Proyección desde cero: no se usa ningún resultado real; todos los partidos se simulan con el Elo inicial."
           : `Se conservan los resultados reales anteriores a la jornada ${startMatchday ?? season.current_matchday}; desde ahí se simula con el Elo de ese momento.`}
       </p>
+
+      {STATIC_DATA ? (
+        <div className="notice" style={{ marginBottom: 18 }}>
+          <strong>Datos de la última simulación publicada.</strong>
+          <span>
+            Actualizados el {formatUpdatedAt(season.updated_at)}. El laboratorio
+            de escenarios y la simulación de 1M necesitan el motor en marcha.
+          </span>
+        </div>
+      ) : null}
 
       {season.demo ? (
         <div className="notice" style={{ marginBottom: 18 }}>

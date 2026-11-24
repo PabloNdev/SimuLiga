@@ -1,4 +1,4 @@
-import { ApiError } from "@/lib/api";
+import { ApiError, STATIC_DATA, staticPayload } from "@/lib/api";
 import type {
   ChampionsEloPayload,
   ChampionsMatchesPayload,
@@ -52,6 +52,9 @@ async function request<T>(
 export function getChampionsSeason(
   signal?: AbortSignal,
 ): Promise<ChampionsSeasonPayload> {
+  if (STATIC_DATA) {
+    return staticPayload<ChampionsSeasonPayload>("champions-season.json", signal);
+  }
   return request<ChampionsSeasonPayload>("/api/champions/season", undefined, signal);
 }
 
@@ -60,6 +63,12 @@ export function getChampionsProjection(
   mode: Mode = "score",
   signal?: AbortSignal,
 ): Promise<ChampionsProjectionPayload> {
+  if (STATIC_DATA) {
+    return staticPayload<ChampionsProjectionPayload>(
+      `champions-projection-${mode}.json`,
+      signal,
+    );
+  }
   return request<ChampionsProjectionPayload>(
     `/api/champions/projection?mode=${mode}&sims=${sims}&seed=42`,
     undefined,
@@ -71,6 +80,12 @@ export function getChampionsMatches(
   mode: Mode = "score",
   signal?: AbortSignal,
 ): Promise<ChampionsMatchesPayload> {
+  if (STATIC_DATA) {
+    return staticPayload<ChampionsMatchesPayload>(
+      `champions-matches-${mode}.json`,
+      signal,
+    );
+  }
   return request<ChampionsMatchesPayload>(
     `/api/champions/matches?mode=${mode}`,
     undefined,
@@ -81,12 +96,21 @@ export function getChampionsMatches(
 export function getChampionsElo(
   signal?: AbortSignal,
 ): Promise<ChampionsEloPayload> {
+  if (STATIC_DATA) {
+    return staticPayload<ChampionsEloPayload>("champions-elo.json", signal);
+  }
   return request<ChampionsEloPayload>("/api/champions/elo", undefined, signal);
 }
 
 export function getChampionsValidation(
   signal?: AbortSignal,
 ): Promise<ChampionsValidationPayload> {
+  if (STATIC_DATA) {
+    return staticPayload<ChampionsValidationPayload>(
+      "champions-validation.json",
+      signal,
+    );
+  }
   return request<ChampionsValidationPayload>(
     "/api/champions/validation",
     undefined,
