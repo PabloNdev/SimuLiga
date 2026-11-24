@@ -14,7 +14,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.schemas import FullProjectionRequest, ScenarioRequest
-from app.champions.api.routes import router as champions_router
 from app.api.serializers import (
     TIEBREAK_RULES,
     current_matchday,
@@ -24,6 +23,8 @@ from app.api.serializers import (
     serialize_projection,
     serialize_season,
 )
+from app.champions.api.routes import router as champions_router
+from app.config import get_settings
 from app.data.league import LeagueSnapshot, get_snapshot
 from app.domain.davidson import DavidsonParams
 from app.domain.models import Outcome
@@ -35,11 +36,7 @@ app.include_router(champions_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-    ],
+    allow_origins=get_settings().cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

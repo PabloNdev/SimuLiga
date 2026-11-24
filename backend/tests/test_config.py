@@ -17,6 +17,20 @@ def test_settings_resolve_env_and_cache_paths_from_the_project_root(tmp_path, mo
     assert Path(settings.cache_dir) == BACKEND_ROOT / ".cache"
 
 
+def test_cors_origins_are_parsed_from_env(monkeypatch):
+    monkeypatch.setenv(
+        "CORS_ALLOW_ORIGINS",
+        "https://simuliga.pages.dev, https://simuliga.example.com ,",
+    )
+
+    settings = Settings()
+
+    assert settings.cors_origins == [
+        "https://simuliga.pages.dev",
+        "https://simuliga.example.com",
+    ]
+
+
 def test_champions_settings_resolve_env_and_cache_paths_from_the_project_root(
     tmp_path, monkeypatch
 ):

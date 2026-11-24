@@ -29,6 +29,19 @@ class Settings(BaseSettings):
     football_data_season: str = "2627"
     previous_football_data_season: str = "2526"
     snapshot_ttl_seconds: int = 3_600
+    # Orígenes permitidos por CORS, separados por comas. En producción añade el
+    # dominio del frontend (por ejemplo https://simuliga.pages.dev).
+    cors_allow_origins: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001"
+    )
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_allow_origins.split(",")
+            if origin.strip()
+        ]
 
 
 @lru_cache
