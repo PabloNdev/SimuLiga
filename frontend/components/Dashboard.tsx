@@ -10,6 +10,13 @@ import {
   postFullProjection,
   STATIC_DATA,
 } from "@/lib/api";
+import {
+  DEFAULT_SIMS,
+  LALIGA_MAX_SIMS,
+  LALIGA_SIM_PRESETS,
+  LALIGA_SYNC_API_LIMIT,
+  type SimulationProgress,
+} from "@/lib/sim-config";
 import type { Mode, ProjectionPayload, SeasonPayload } from "@/lib/types";
 import { formatProbability, formatUpdatedAt } from "@/lib/format";
 import { FavoriteCard } from "@/components/FavoriteCard";
@@ -17,159 +24,233 @@ import { Fixtures } from "@/components/Fixtures";
 import { Heatmap } from "@/components/Heatmap";
 import { LeagueTable, type Metric } from "@/components/LeagueTable";
 import { PointsDistribution } from "@/components/PointsDistribution";
+import {
+  SimSizeControl,
+  SimulationProgressNotice,
+} from "@/components/SimSizeControl";
 import { TitleRace } from "@/components/TitleRace";
 import { ErrorState, SkeletonPanel } from "@/components/States";
-
-const FAST_SIMS = 10_000;
-const FULL_SIMS = 1_000_000;
 
 export function Dashboard() {
   const [season, setSeason] = useState<SeasonPayload | null>(null);
   const [projection, setProjection] = useState<ProjectionPayload | null>(null);
   const [mode, setMode] = useState<Mode>("score");
+  const [sims, setSims] = useState<number>(DEFAULT_SIMS);
   const [metric, setMetric] = useState<Metric>("champion");
   const [startMatchday, setStartMatchday] = useState<number | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [simulating, setSimulating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [fullLoading, setFullLoading] = useState(false);
   const [jobMessage, setJobMessage] = useState<string | null>(null);
-  const [jobProgress, setJobProgress] = useState<{
-    progress: number;
-    completed: number;
-    elapsed: number;
-  } | null>(null);
+  const [jobProgress, setJobProgress] = useState<SimulationProgress | null>(null);
+
   const pollRef = useRef<number | null>(null);
-  const modeRef = useRef<Mode>(mode);
-  const startRef = useRef<number | null>(startMatchday);
+  const abortRef = useRef<AbortController | null>(null);
+  const previousSimsRef = useRef<number>(DEFAULT_SIMS);
 
-  useEffect(() => {
-    modeRef.current = mode;
-  }, [mode]);
-
-  useEffect(() => {
-    startRef.current = startMatchday;
-  }, [startMatchday]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    Promise.all([
-      getSeason(controller.signal),
-      getProjection(mode, FAST_SIMS, startMatchday ?? 10, controller.signal),
-    ])
-      .then(([seasonPayload, projectionPayload]) => {
-        setSeason(seasonPayload);
-        setStartMatchday((current) => current ?? seasonPayload.current_matchday);
-        setProjection(projectionPayload);
-        setSelectedTeam((current) => current ?? projectionPayload.teams[0]?.team.id ?? null);
-        setLoading(false);
-      })
-      .catch((caught: unknown) => {
-        if (caught instanceof DOMException && caught.name === "AbortError") return;
-        setError(caught instanceof Error ? caught.message : "Error inesperado");
-        setLoading(false);
-      });
-    return () => controller.abort();
-  }, [mode, startMatchday, reloadKey]);
-
-  useEffect(() => {
-    return () => {
-      if (pollRef.current !== null) {
-        window.clearInterval(pollRef.current);
-      }
-    };
-  }, []);
-
-  function changeStart(nextStart: number) {
-    if (nextStart === startMatchday) return;
+  function clearActiveRun() {
     if (pollRef.current !== null) {
       window.clearInterval(pollRef.current);
       pollRef.current = null;
     }
-    setFullLoading(false);
-    setJobMessage(null);
-    setJobProgress(null);
-    setLoading(true);
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+  }
+
+  function beginRunState(nextSims: number) {
+    const showProgress = nextSims >= 20_000;
     setError(null);
+    setSimulating(true);
+    if (showProgress) {
+      setJobProgress({
+        completed: 0,
+        total: nextSims,
+        progress: 0,
+        elapsedSeconds: 0,
+      });
+      setJobMessage(
+        STATIC_DATA
+          ? `Simulando ${nextSims.toLocaleString("es-ES")} temporadas en tu navegador…`
+          : `Simulando ${nextSims.toLocaleString("es-ES")} temporadas en el servidor…`,
+      );
+    } else {
+      setJobProgress(null);
+      setJobMessage(null);
+    }
+  }
+
+  useEffect(() => {
+    clearActiveRun();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const showProgress = sims >= 20_000;
+    const isAsyncBackendJob = !STATIC_DATA && sims > LALIGA_SYNC_API_LIMIT;
+
+    const run = async () => {
+      try {
+        const seasonPayload = await getSeason(controller.signal);
+        if (controller.signal.aborted) return;
+        setSeason(seasonPayload);
+        const effectiveStart = startMatchday ?? seasonPayload.current_matchday;
+        if (startMatchday === null) {
+          setStartMatchday(effectiveStart);
+        }
+
+        if (isAsyncBackendJob) {
+          const created = await postFullProjection(
+            {
+              mode,
+              sims,
+              seed: 42,
+              start_matchday: effectiveStart,
+            },
+            controller.signal,
+          );
+          if (controller.signal.aborted) return;
+
+          await new Promise<void>((resolve, reject) => {
+            const onAbort = () => {
+              if (pollRef.current !== null) {
+                window.clearInterval(pollRef.current);
+                pollRef.current = null;
+              }
+              reject(new DOMException("Cancelado", "AbortError"));
+            };
+            controller.signal.addEventListener("abort", onAbort, { once: true });
+
+            pollRef.current = window.setInterval(async () => {
+              try {
+                const job = await getJob(created.job_id, controller.signal);
+                setJobProgress({
+                  completed: job.completed_sims,
+                  total: sims,
+                  progress: job.progress,
+                  elapsedSeconds: job.elapsed_seconds,
+                });
+                if (job.status === "done" && job.result) {
+                  if (pollRef.current !== null) {
+                    window.clearInterval(pollRef.current);
+                    pollRef.current = null;
+                  }
+                  controller.signal.removeEventListener("abort", onAbort);
+                  setProjection(job.result);
+                  previousSimsRef.current = job.result.n_sims;
+                  setSelectedTeam(
+                    (current) =>
+                      current ?? job.result?.teams[0]?.team.id ?? null,
+                  );
+                  setJobProgress(null);
+                  setJobMessage(
+                    `Listo: ${job.result.n_sims.toLocaleString("es-ES")} temporadas en ${job.result.elapsed_seconds.toFixed(1)} s.`,
+                  );
+                  resolve();
+                } else if (job.status === "error") {
+                  if (pollRef.current !== null) {
+                    window.clearInterval(pollRef.current);
+                    pollRef.current = null;
+                  }
+                  controller.signal.removeEventListener("abort", onAbort);
+                  reject(
+                    new Error(job.error ?? "La simulación completa falló."),
+                  );
+                }
+              } catch (caught) {
+                if (pollRef.current !== null) {
+                  window.clearInterval(pollRef.current);
+                  pollRef.current = null;
+                }
+                controller.signal.removeEventListener("abort", onAbort);
+                reject(caught);
+              }
+            }, 1500);
+          });
+        } else {
+          const projectionPayload = await getProjection(
+            mode,
+            sims,
+            effectiveStart,
+            controller.signal,
+            showProgress
+              ? (progress) => {
+                  if (!controller.signal.aborted) {
+                    setJobProgress(progress);
+                  }
+                }
+              : undefined,
+          );
+          if (controller.signal.aborted) return;
+          setProjection(projectionPayload);
+          previousSimsRef.current = projectionPayload.n_sims;
+          setSelectedTeam(
+            (current) =>
+              current ?? projectionPayload.teams[0]?.team.id ?? null,
+          );
+          setJobProgress(null);
+          if (showProgress) {
+            setJobMessage(
+              `Listo: ${projectionPayload.n_sims.toLocaleString("es-ES")} temporadas en ${projectionPayload.elapsed_seconds.toFixed(2)} s.`,
+            );
+          }
+        }
+        setLoading(false);
+        setSimulating(false);
+      } catch (caught: unknown) {
+        if (caught instanceof DOMException && caught.name === "AbortError") {
+          return;
+        }
+        setJobProgress(null);
+        setSimulating(false);
+        const message =
+          caught instanceof ApiError || caught instanceof Error
+            ? caught.message
+            : "Error inesperado";
+        if (projection) {
+          setJobMessage(message);
+        } else {
+          setError(message);
+          setLoading(false);
+        }
+      }
+    };
+
+    run();
+
+    return () => {
+      clearActiveRun();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, sims, startMatchday, reloadKey]);
+
+  function changeStart(nextStart: number) {
+    if (nextStart === startMatchday) return;
+    beginRunState(sims);
     setStartMatchday(nextStart);
   }
 
   function changeMode(nextMode: Mode) {
     if (nextMode === mode) return;
-    if (pollRef.current !== null) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-    setFullLoading(false);
-    setJobMessage(null);
-    setJobProgress(null);
-    setLoading(true);
-    setError(null);
+    beginRunState(sims);
     setMode(nextMode);
   }
 
-  async function startFullRun() {
-    if (fullLoading || !projection) return;
-    const requestedMode = mode;
-    const requestedStart = startMatchday;
-    setFullLoading(true);
-    setJobProgress({ progress: 0, completed: 0, elapsed: 0 });
-    setJobMessage(
-      "Simulando 1.000.000 de temporadas en el servidor. Esto puede tardar unos 3 minutos; el progreso se actualiza cada pocos segundos.",
-    );
-    try {
-      const created = await postFullProjection({
-        mode: requestedMode,
-        sims: FULL_SIMS,
-        seed: 42,
-        start_matchday: requestedStart,
-      });
-      pollRef.current = window.setInterval(async () => {
-        try {
-          const job = await getJob(created.job_id);
-          setJobProgress({
-            progress: job.progress,
-            completed: job.completed_sims,
-            elapsed: job.elapsed_seconds,
-          });
-          if (job.status === "done" && job.result) {
-            if (pollRef.current !== null) window.clearInterval(pollRef.current);
-            pollRef.current = null;
-            setFullLoading(false);
-            setJobProgress(null);
-            if (
-              requestedMode === modeRef.current &&
-              requestedStart === startRef.current
-            ) {
-              setProjection(job.result);
-              setJobMessage(
-                `Listo: ${job.result.n_sims.toLocaleString("es-ES")} temporadas en ${job.result.elapsed_seconds.toFixed(1)} s.`,
-              );
-            } else {
-              setJobMessage("La simulación terminó, pero cambiaste de modo. Vuelve a lanzarla.");
-            }
-          } else if (job.status === "error") {
-            if (pollRef.current !== null) window.clearInterval(pollRef.current);
-            pollRef.current = null;
-            setFullLoading(false);
-            setJobMessage(job.error ?? "La simulación completa falló.");
-          }
-        } catch (caught) {
-          if (pollRef.current !== null) window.clearInterval(pollRef.current);
-          pollRef.current = null;
-          setFullLoading(false);
-          setJobProgress(null);
-          setJobMessage(caught instanceof Error ? caught.message : "Error consultando el trabajo.");
-        }
-      }, 2500);
-    } catch (caught) {
-      setFullLoading(false);
-      setJobMessage(
-        caught instanceof ApiError
-          ? caught.message
-          : "No se pudo iniciar la simulación completa.",
-      );
+  function changeSims(nextSims: number) {
+    if (nextSims === sims) return;
+    beginRunState(nextSims);
+    setSims(nextSims);
+  }
+
+  function cancelRun() {
+    clearActiveRun();
+    setSimulating(false);
+    setJobProgress(null);
+    setJobMessage("Simulación cancelada.");
+    if (sims !== previousSimsRef.current) {
+      setSims(previousSimsRef.current);
     }
   }
 
@@ -180,7 +261,7 @@ export function Dashboard() {
           <div>
             <span className="kicker">Panel de proyecciones</span>
             <h1 className="page-title">
-              LaLiga, jugada <em>10.000</em> veces.
+              LaLiga, jugada <em>{DEFAULT_SIMS.toLocaleString("es-ES")}</em> veces.
             </h1>
           </div>
         </div>
@@ -199,7 +280,9 @@ export function Dashboard() {
         <div className="page-head">
           <div>
             <span className="kicker">Panel de proyecciones</span>
-            <h1 className="page-title">LaLiga, jugada 10.000 veces.</h1>
+            <h1 className="page-title">
+              LaLiga, jugada {sims.toLocaleString("es-ES")} veces.
+            </h1>
           </div>
         </div>
         <ErrorState
@@ -242,7 +325,8 @@ export function Dashboard() {
             Simulando desde <strong>J{startMatchday ?? season.current_matchday}</strong>
           </span>
           <span className="chip">
-            Jugados <strong>{season.played_matches}</strong> / {season.played_matches + season.pending_matches}
+            Jugados <strong>{season.played_matches}</strong> /{" "}
+            {season.played_matches + season.pending_matches}
           </span>
           <span className="chip chip-accent">
             <strong>{simulations}</strong> temporadas
@@ -306,36 +390,37 @@ export function Dashboard() {
           </button>
         </div>
 
-        {STATIC_DATA ? (
-          <span className="chip">
-            Datos de <strong>J{startMatchday ?? season.current_matchday}</strong>
-          </span>
-        ) : (
-          <>
-            <span className="controls-label">Desde J</span>
-            <select
-              className="matchday-select"
-              value={startMatchday ?? season.current_matchday}
-              onChange={(event) => changeStart(Number(event.target.value))}
-              aria-label="Jornada de inicio de la simulación"
-              title="Se conservan los resultados reales anteriores y se simula desde esta jornada."
-            >
-              {Array.from(
-                { length: season.total_matchdays },
-                (_, index) => index + 1,
-              ).map((matchday) => (
-                <option key={matchday} value={matchday}>
-                  {matchday}
-                  {matchday === season.current_matchday
-                    ? " · actual"
-                    : matchday === 1
-                      ? " · pretemporada"
-                      : ""}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
+        <span className="controls-label">Desde J</span>
+        <select
+          className="matchday-select"
+          value={startMatchday ?? season.current_matchday}
+          onChange={(event) => changeStart(Number(event.target.value))}
+          aria-label="Jornada de inicio de la simulación"
+          title="Se conservan los resultados reales anteriores y se simula desde esta jornada."
+        >
+          {Array.from(
+            { length: season.total_matchdays },
+            (_, index) => index + 1,
+          ).map((matchday) => (
+            <option key={matchday} value={matchday}>
+              {matchday}
+              {matchday === season.current_matchday
+                ? " · actual"
+                : matchday === 1
+                  ? " · pretemporada"
+                  : ""}
+            </option>
+          ))}
+        </select>
+
+        <span className="controls-label">Simulaciones</span>
+        <SimSizeControl
+          id="laliga-sim-size"
+          value={sims}
+          presets={LALIGA_SIM_PRESETS}
+          maxSims={LALIGA_MAX_SIMS}
+          onChange={changeSims}
+        />
 
         <span className="controls-label">Métrica</span>
         <div className="segmented" role="group" aria-label="Métrica de la tabla">
@@ -363,35 +448,24 @@ export function Dashboard() {
         </div>
 
         <span className="controls-spacer" />
-        {STATIC_DATA ? null : (
-          <button
-            type="button"
-            className="btn"
-            onClick={startFullRun}
-            disabled={fullLoading}
-          >
-            {fullLoading ? "Simulando 1M…" : "Precisión 1M"}
-          </button>
-        )}
-        {STATIC_DATA ? null : (
-          <Link href="/escenario" className="btn btn-primary">
-            Abrir laboratorio
-          </Link>
-        )}
+        <Link href="/escenario" className="btn btn-primary">
+          Abrir laboratorio
+        </Link>
       </div>
 
       <p className="controls-hint">
         {startMatchday === 1
           ? "Proyección desde cero: no se usa ningún resultado real; todos los partidos se simulan con el Elo inicial."
           : `Se conservan los resultados reales anteriores a la jornada ${startMatchday ?? season.current_matchday}; desde ahí se simula con el Elo de ese momento.`}
+        {" "}Por defecto se usan {DEFAULT_SIMS.toLocaleString("es-ES")} temporadas pensando en móviles; puedes subir el tamaño o introducir uno propio.
       </p>
 
       {STATIC_DATA ? (
         <div className="notice" style={{ marginBottom: 18 }}>
-          <strong>Datos de la última simulación publicada.</strong>
+          <strong>Simulación en tu navegador.</strong>
           <span>
-            Actualizados el {formatUpdatedAt(season.updated_at)}. El laboratorio
-            de escenarios y la simulación de 1M necesitan el motor en marcha.
+            Resultados reales actualizados el {formatUpdatedAt(season.updated_at)}.
+            El cálculo Monte Carlo corre en tu dispositivo ({projection.elapsed_seconds.toFixed(2)} s).
           </span>
         </div>
       ) : null}
@@ -408,32 +482,12 @@ export function Dashboard() {
       ) : null}
 
       {jobMessage ? (
-        <div className="notice" style={{ marginBottom: 18 }} role="status" aria-live="polite">
-          <strong>{fullLoading ? "En marcha." : "Simulación."}</strong>
-          <span>{jobMessage}</span>
-          {fullLoading && jobProgress ? (
-            <div style={{ flexBasis: "100%", display: "grid", gap: 6 }}>
-              <div className="bar" style={{ height: 8 }}>
-                <div
-                  className="bar-fill accent"
-                  style={{ width: `${Math.max(1, jobProgress.progress * 100)}%` }}
-                />
-              </div>
-              <span className="muted" style={{ fontSize: 11 }}>
-                {Math.round(jobProgress.progress * 100)}% ·{" "}
-                {jobProgress.completed.toLocaleString("es-ES")} / 1.000.000
-                {jobProgress.progress > 0.02
-                  ? ` · quedan ~${Math.max(
-                      1,
-                      Math.round(
-                        jobProgress.elapsed / jobProgress.progress - jobProgress.elapsed,
-                      ),
-                    )} s`
-                  : ""}
-              </span>
-            </div>
-          ) : null}
-        </div>
+        <SimulationProgressNotice
+          message={jobMessage}
+          progress={jobProgress}
+          running={simulating}
+          onCancel={simulating ? cancelRun : undefined}
+        />
       ) : null}
 
       <div className="dashboard-grid">
@@ -442,12 +496,16 @@ export function Dashboard() {
             <div>
               <h2 className="panel-title">Tabla aumentada</h2>
               <span className="panel-note">
-                Posición actual, proyección media y {metric === "champion" ? "probabilidad de título" : metric === "top4" ? "probabilidad de Top 4" : "riesgo de descenso"}.
+                Posición actual, proyección media y{" "}
+                {metric === "champion"
+                  ? "probabilidad de título"
+                  : metric === "top4"
+                    ? "probabilidad de Top 4"
+                    : "riesgo de descenso"}
+                .
               </span>
             </div>
-            <span className="chip">
-              Ordenada por posición esperada
-            </span>
+            <span className="chip">Ordenada por posición esperada</span>
           </div>
           <div className="panel-body" style={{ paddingTop: 0 }}>
             <LeagueTable

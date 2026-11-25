@@ -1,13 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { STATIC_DATA } from "@/lib/api";
 import {
   getChampionsMatches,
   getChampionsProjection,
   getChampionsSeason,
 } from "@/lib/champions-api";
+import {
+  CHAMPIONS_MAX_SIMS_API,
+  CHAMPIONS_MAX_SIMS_BROWSER,
+  CHAMPIONS_SIM_PRESETS,
+  DEFAULT_SIMS,
+  type SimulationProgress,
+} from "@/lib/sim-config";
 import type {
   ChampionsMatchesPayload,
   ChampionsProjectionPayload,
@@ -16,58 +24,149 @@ import type {
 import type { Mode } from "@/lib/types";
 import { formatProbability, formatUpdatedAt } from "@/lib/format";
 import { ErrorState, SkeletonPanel } from "@/components/States";
+import {
+  SimSizeControl,
+  SimulationProgressNotice,
+} from "@/components/SimSizeControl";
 import { ChampionsMatches } from "@/components/champions/ChampionsMatches";
 import { LeaguePhaseTable } from "@/components/champions/LeaguePhaseTable";
 import { PositionHeatmap } from "@/components/champions/PositionHeatmap";
 import { ProjectionTable } from "@/components/champions/ProjectionTable";
 
-const SIMS = 10_000;
-
 export function ChampionsDashboard() {
   const [season, setSeason] = useState<ChampionsSeasonPayload | null>(null);
-  const [projection, setProjection] = useState<ChampionsProjectionPayload | null>(null);
+  const [projection, setProjection] =
+    useState<ChampionsProjectionPayload | null>(null);
   const [matches, setMatches] = useState<ChampionsMatchesPayload | null>(null);
   const [mode, setMode] = useState<Mode>("score");
+  const [sims, setSims] = useState<number>(DEFAULT_SIMS);
   const [loading, setLoading] = useState(true);
+  const [simulating, setSimulating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [jobMessage, setJobMessage] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState<SimulationProgress | null>(
+    null,
+  );
+
+  const abortRef = useRef<AbortController | null>(null);
+  const previousSimsRef = useRef<number>(DEFAULT_SIMS);
+  const maxSims = STATIC_DATA
+    ? CHAMPIONS_MAX_SIMS_BROWSER
+    : CHAMPIONS_MAX_SIMS_API;
+
+  function beginRunState(nextSims: number) {
+    const showProgress = nextSims >= 20_000;
+    setError(null);
+    setSimulating(true);
+    if (showProgress) {
+      setJobProgress({
+        completed: 0,
+        total: nextSims,
+        progress: 0,
+        elapsedSeconds: 0,
+      });
+      setJobMessage(
+        STATIC_DATA
+          ? `Simulando ${nextSims.toLocaleString("es-ES")} Champions en tu navegador…`
+          : `Simulando ${nextSims.toLocaleString("es-ES")} Champions en el servidor…`,
+      );
+    } else {
+      setJobProgress(null);
+      setJobMessage(null);
+    }
+  }
 
   function changeMode(next: Mode) {
     if (next === mode) return;
-    setLoading(true);
-    setError(null);
+    beginRunState(sims);
     setMode(next);
   }
 
+  function changeSims(nextSims: number) {
+    if (nextSims === sims) return;
+    beginRunState(nextSims);
+    setSims(nextSims);
+  }
+
+  function cancelRun() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setSimulating(false);
+    setJobProgress(null);
+    setJobMessage("Simulación cancelada.");
+    if (sims !== previousSimsRef.current) {
+      setSims(previousSimsRef.current);
+    }
+  }
+
   useEffect(() => {
+    abortRef.current?.abort();
     const controller = new AbortController();
+    abortRef.current = controller;
+
+    const showProgress = sims >= 20_000;
+
     Promise.all([
       getChampionsSeason(controller.signal),
-      getChampionsProjection(SIMS, mode, controller.signal),
+      getChampionsProjection(
+        sims,
+        mode,
+        controller.signal,
+        showProgress
+          ? (progress) => {
+              if (!controller.signal.aborted) setJobProgress(progress);
+            }
+          : undefined,
+      ),
       getChampionsMatches(mode, controller.signal),
     ])
       .then(([seasonPayload, projectionPayload, matchesPayload]) => {
+        if (controller.signal.aborted) return;
         setSeason(seasonPayload);
         setProjection(projectionPayload);
+        previousSimsRef.current = projectionPayload.n_sims;
         setMatches(matchesPayload);
         setLoading(false);
+        setSimulating(false);
+        setJobProgress(null);
+        if (showProgress) {
+          setJobMessage(
+            `Listo: ${projectionPayload.n_sims.toLocaleString("es-ES")} Champions en ${projectionPayload.elapsed_seconds.toFixed(2)} s.`,
+          );
+        }
       })
       .catch((caught: unknown) => {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
-        setError(caught instanceof Error ? caught.message : "Error inesperado");
-        setLoading(false);
+        setSimulating(false);
+        setJobProgress(null);
+        const message =
+          caught instanceof Error ? caught.message : "Error inesperado";
+        if (projection) {
+          setJobMessage(message);
+        } else {
+          setError(message);
+          setLoading(false);
+        }
       });
-    return () => controller.abort();
-  }, [mode, reloadKey]);
+
+    return () => {
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, sims, reloadKey]);
 
   if (loading && !season) {
     return (
       <div className="container">
         <div className="page-head">
           <div>
-            <span className="kicker">Panel de proyecciones · Champions League</span>
+            <span className="kicker">
+              Panel de proyecciones · Champions League
+            </span>
             <h1 className="page-title">
-              La Champions, jugada <em>10.000</em> veces.
+              La Champions, jugada{" "}
+              <em>{DEFAULT_SIMS.toLocaleString("es-ES")}</em> veces.
             </h1>
           </div>
         </div>
@@ -85,8 +184,12 @@ export function ChampionsDashboard() {
       <div className="container">
         <div className="page-head">
           <div>
-            <span className="kicker">Panel de proyecciones · Champions League</span>
-            <h1 className="page-title">La Champions, jugada 10.000 veces.</h1>
+            <span className="kicker">
+              Panel de proyecciones · Champions League
+            </span>
+            <h1 className="page-title">
+              La Champions, jugada {sims.toLocaleString("es-ES")} veces.
+            </h1>
           </div>
         </div>
         <ErrorState
@@ -116,7 +219,8 @@ export function ChampionsDashboard() {
       <div className="page-head">
         <div>
           <span className="kicker">
-            Panel de proyecciones · Champions League {season.target_season ?? season.season}
+            Panel de proyecciones · Champions League{" "}
+            {season.target_season ?? season.season}
           </span>
           <h1 className="page-title">
             La Champions, jugada <em>{simulations}</em> veces.
@@ -170,6 +274,16 @@ export function ChampionsDashboard() {
             Solo 1X2
           </button>
         </div>
+
+        <span className="controls-label">Simulaciones</span>
+        <SimSizeControl
+          id="champions-sim-size"
+          value={sims}
+          presets={CHAMPIONS_SIM_PRESETS}
+          maxSims={maxSims}
+          onChange={changeSims}
+        />
+
         <span className="controls-spacer" />
         <Link href="/champions/playoff" className="btn">
           Ver playoff
@@ -182,7 +296,27 @@ export function ChampionsDashboard() {
         {mode === "score"
           ? "Se simulan marcadores exactos para aplicar puntos, diferencia de goles, goles a favor y goles fuera."
           : "Solo se simula el 1X2: los desempates usan puntos, victorias y sorteo determinista."}
+        {" "}Por defecto {DEFAULT_SIMS.toLocaleString("es-ES")} simulaciones pensando en móviles; ajusta el tamaño si quieres más precisión.
       </p>
+
+      {STATIC_DATA ? (
+        <div className="notice" style={{ marginBottom: 18 }}>
+          <strong>Simulación en tu navegador.</strong>
+          <span>
+            Resultados reales actualizados el {formatUpdatedAt(season.updated_at)}.
+            Fase de liga y playoff calculados en tu dispositivo ({projection.elapsed_seconds.toFixed(2)} s).
+          </span>
+        </div>
+      ) : null}
+
+      {jobMessage ? (
+        <SimulationProgressNotice
+          message={jobMessage}
+          progress={jobProgress}
+          running={simulating}
+          onCancel={simulating ? cancelRun : undefined}
+        />
+      ) : null}
 
       <div className="hero-grid">
         <section className="hero-copy rise">
@@ -196,7 +330,9 @@ export function ChampionsDashboard() {
           </p>
           <div className="hero-stats">
             <div className="hero-stat">
-              <strong>{formatProbability(favorite.round_of_16_probability)}</strong>
+              <strong>
+                {formatProbability(favorite.round_of_16_probability)}
+              </strong>
               <span>octavos</span>
             </div>
             <div className="hero-stat">
@@ -234,11 +370,15 @@ export function ChampionsDashboard() {
             </div>
             <div className="champions-favorite-row">
               <span>Eliminado</span>
-              <strong>{formatProbability(favorite.eliminated_probability)}</strong>
+              <strong>
+                {formatProbability(favorite.eliminated_probability)}
+              </strong>
             </div>
             <div className="champions-favorite-row">
               <span>Ganar playoff</span>
-              <strong>{formatProbability(favorite.playoff_win_probability)}</strong>
+              <strong>
+                {formatProbability(favorite.playoff_win_probability)}
+              </strong>
             </div>
             <div className="champions-favorite-row">
               <span>Posición más probable</span>
@@ -326,4 +466,3 @@ export function ChampionsDashboard() {
     </div>
   );
 }
-

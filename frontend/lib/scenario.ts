@@ -1,4 +1,9 @@
 import type { Mode, ModelInfo, Outcome } from "@/lib/types";
+import {
+  clampSimSize,
+  DEFAULT_SIMS,
+  LALIGA_MAX_SIMS,
+} from "./sim-config.ts";
 
 export interface ScenarioState {
   mode: Mode;
@@ -18,7 +23,7 @@ export const DEFAULT_SCENARIO: ScenarioState = {
   homeAdvantage: null,
   nu: null,
   rho: null,
-  sims: 10_000,
+  sims: DEFAULT_SIMS,
   startMatchday: 10,
 };
 
@@ -81,7 +86,10 @@ export function parseScenario(params: URLSearchParams): ScenarioState {
     homeAdvantage: numberOrNull("h"),
     nu: numberOrNull("nu"),
     rho: numberOrNull("rho"),
-    sims: numberOrDefault("sims", DEFAULT_SCENARIO.sims),
+    sims: clampSimSize(
+      numberOrDefault("sims", DEFAULT_SCENARIO.sims),
+      LALIGA_MAX_SIMS,
+    ),
     startMatchday: Math.max(
       1,
       Math.min(38, Math.round(numberOrDefault("start", DEFAULT_SCENARIO.startMatchday))),

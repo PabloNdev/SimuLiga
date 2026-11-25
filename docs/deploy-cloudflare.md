@@ -9,8 +9,18 @@ No hay servidor de Next en producción.
 | `frontend/` | Worker `simuliga` | Sirve la interfaz estática desde `out/` |
 | `backend/` | Opcional, otro host | FastAPI con las simulaciones; solo si se activan datos en vivo |
 
-Los datos que muestra el sitio salen de `frontend/public/data`: una foto de la
-última simulación. Así funciona sin backend.
+Los datos base (equipos, calendario, resultados reales y ELO) salen de
+`frontend/public/data`, mientras que las simulaciones Monte Carlo de
+**SimuLiga** y **SimuChampions** se ejecutan directamente en el navegador del
+visitante mediante Web Workers (sin necesidad de backend).
+
+- Tamaño por defecto: **5.000 simulaciones**, pensado para responder en pocos
+  milisegundos en teléfonos móviles.
+- El usuario puede elegir otro tamaño predefinido o introducir un número
+  personalizado (hasta 1.000.000 en LaLiga y 250.000 en Champions), con barra de
+  progreso y cancelación.
+- Tanto el selector de jornada de inicio como el laboratorio de escenarios
+  (`/escenario`) funcionan por completo en el navegador.
 
 ## Configuración del Worker
 
@@ -112,5 +122,5 @@ Con eso se reactivan el laboratorio de escenarios y la simulación de 1M.
 - [ ] `frontend/public/data/manifest.json` con `demo: false` y fecha reciente.
 - [ ] `npm run build` local genera `out/` con `out/data/`.
 - [ ] URL habilitada en **Dominios** (`workers.dev` o dominio propio).
-- [ ] El panel, `/elo`, `/champions` y `/champions/playoff` enseñan datos;
-      `/escenario` explica que necesita el motor.
+- [ ] El panel, `/escenario`, `/elo`, `/champions` y `/champions/playoff`
+      ejecutan simulaciones en el navegador con 5.000 por defecto y tamaño configurable.

@@ -1,30 +1,137 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { STATIC_DATA } from "@/lib/api";
 import { getChampionsProjection } from "@/lib/champions-api";
+import {
+  CHAMPIONS_MAX_SIMS_API,
+  CHAMPIONS_MAX_SIMS_BROWSER,
+  CHAMPIONS_SIM_PRESETS,
+  DEFAULT_SIMS,
+  type SimulationProgress,
+} from "@/lib/sim-config";
 import type { ChampionsProjectionPayload } from "@/lib/champions-types";
+import type { Mode } from "@/lib/types";
 import { formatProbability } from "@/lib/format";
 import { ErrorState, LoadingState } from "@/components/States";
 import { ProbabilityBar } from "@/components/ProbabilityBar";
+import {
+  SimSizeControl,
+  SimulationProgressNotice,
+} from "@/components/SimSizeControl";
 import { TeamBadge } from "@/components/TeamBadge";
 import { TeamCrest } from "@/components/TeamCrest";
 import { PlayoffBracket } from "@/components/champions/PlayoffBracket";
 
 export function PlayoffForecast() {
-  const [projection, setProjection] = useState<ChampionsProjectionPayload | null>(null);
+  const [projection, setProjection] =
+    useState<ChampionsProjectionPayload | null>(null);
+  const [mode, setMode] = useState<Mode>("score");
+  const [sims, setSims] = useState<number>(DEFAULT_SIMS);
+  const [simulating, setSimulating] = useState(false);
+  const [jobMessage, setJobMessage] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState<SimulationProgress | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const previousSimsRef = useRef<number>(DEFAULT_SIMS);
+  const maxSims = STATIC_DATA
+    ? CHAMPIONS_MAX_SIMS_BROWSER
+    : CHAMPIONS_MAX_SIMS_API;
+
+  function beginRunState(nextSims: number) {
+    const showProgress = nextSims >= 20_000;
+    setError(null);
+    setSimulating(true);
+    if (showProgress) {
+      setJobProgress({
+        completed: 0,
+        total: nextSims,
+        progress: 0,
+        elapsedSeconds: 0,
+      });
+      setJobMessage(
+        STATIC_DATA
+          ? `Simulando ${nextSims.toLocaleString("es-ES")} eliminatorias en tu navegador…`
+          : `Simulando ${nextSims.toLocaleString("es-ES")} eliminatorias en el servidor…`,
+      );
+    } else {
+      setJobProgress(null);
+      setJobMessage(null);
+    }
+  }
+
+  function changeMode(next: Mode) {
+    if (next === mode) return;
+    beginRunState(sims);
+    setMode(next);
+  }
+
+  function changeSims(nextSims: number) {
+    if (nextSims === sims) return;
+    beginRunState(nextSims);
+    setSims(nextSims);
+  }
+
+  function cancelRun() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setSimulating(false);
+    setJobProgress(null);
+    setJobMessage("Simulación cancelada.");
+    if (sims !== previousSimsRef.current) {
+      setSims(previousSimsRef.current);
+    }
+  }
+
   useEffect(() => {
+    abortRef.current?.abort();
     const controller = new AbortController();
-    getChampionsProjection(10_000, "score", controller.signal)
-      .then(setProjection)
+    abortRef.current = controller;
+
+    const showProgress = sims >= 20_000;
+
+    getChampionsProjection(
+      sims,
+      mode,
+      controller.signal,
+      showProgress
+        ? (progress) => {
+            if (!controller.signal.aborted) setJobProgress(progress);
+          }
+        : undefined,
+    )
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+        setProjection(payload);
+        previousSimsRef.current = payload.n_sims;
+        setSimulating(false);
+        setJobProgress(null);
+        if (showProgress) {
+          setJobMessage(
+            `Listo: ${payload.n_sims.toLocaleString("es-ES")} simulaciones en ${payload.elapsed_seconds.toFixed(2)} s.`,
+          );
+        }
+      })
       .catch((caught: unknown) => {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
-        setError(caught instanceof Error ? caught.message : "Error inesperado");
+        setSimulating(false);
+        setJobProgress(null);
+        const message =
+          caught instanceof Error ? caught.message : "Error inesperado";
+        if (projection) {
+          setJobMessage(message);
+        } else {
+          setError(message);
+        }
       });
+
     return () => controller.abort();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, sims]);
 
   if (error) {
     return (
@@ -64,8 +171,48 @@ export function PlayoffForecast() {
             prórroga y penaltis.
           </p>
         </div>
-        <span className="chip">{projection.n_sims.toLocaleString("es-ES")} simulaciones</span>
+        <span className="chip">
+          {projection.n_sims.toLocaleString("es-ES")} simulaciones
+        </span>
       </div>
+
+      <div className="controls" role="toolbar" aria-label="Controles de playoff">
+        <span className="controls-label">Resultado</span>
+        <div className="segmented" role="group" aria-label="Modo de simulación">
+          <button
+            type="button"
+            aria-pressed={mode === "score"}
+            onClick={() => changeMode("score")}
+          >
+            Marcador exacto
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === "1x2"}
+            onClick={() => changeMode("1x2")}
+          >
+            Solo 1X2
+          </button>
+        </div>
+
+        <span className="controls-label">Simulaciones</span>
+        <SimSizeControl
+          id="playoff-sim-size"
+          value={sims}
+          presets={CHAMPIONS_SIM_PRESETS}
+          maxSims={maxSims}
+          onChange={changeSims}
+        />
+      </div>
+
+      {jobMessage ? (
+        <SimulationProgressNotice
+          message={jobMessage}
+          progress={jobProgress}
+          running={simulating}
+          onCancel={simulating ? cancelRun : undefined}
+        />
+      ) : null}
 
       <section className="panel">
         <div className="panel-head">
@@ -112,26 +259,37 @@ export function PlayoffForecast() {
                       Object.entries(item.opponent_probabilities)
                         .sort((a, b) => b[1] - a[1])
                         .slice(0, 1)[0] ?? [];
-                    const opponent = opponentId ? byId.get(opponentId)?.team : null;
+                    const opponent = opponentId
+                      ? byId.get(opponentId)?.team
+                      : null;
                     return (
                       <tr key={item.team.id}>
                         <td className="team-cell">
                           <TeamBadge team={item.team} />
                         </td>
                         <td className="num">
-                          <ProbabilityBar value={item.playoff_probability} tone="accent" />
+                          <ProbabilityBar
+                            value={item.playoff_probability}
+                            tone="accent"
+                          />
                           <span className="prob-label">
                             {formatProbability(item.playoff_probability)}
                           </span>
                         </td>
                         <td className="num">
-                          <ProbabilityBar value={item.playoff_win_probability} tone="good" />
+                          <ProbabilityBar
+                            value={item.playoff_win_probability}
+                            tone="good"
+                          />
                           <span className="prob-label">
                             {formatProbability(item.playoff_win_probability)}
                           </span>
                         </td>
                         <td className="num">
-                          <ProbabilityBar value={item.round_of_16_probability} tone="good" />
+                          <ProbabilityBar
+                            value={item.round_of_16_probability}
+                            tone="good"
+                          />
                           <span className="prob-label">
                             {formatProbability(item.round_of_16_probability)}
                           </span>
@@ -141,7 +299,9 @@ export function PlayoffForecast() {
                             <>
                               <TeamCrest team={opponent} size={14} />
                               {opponent.short_name}{" "}
-                              <span className="muted">{formatProbability(probability)}</span>
+                              <span className="muted">
+                                {formatProbability(probability)}
+                              </span>
                             </>
                           ) : (
                             "—"
@@ -175,15 +335,21 @@ export function PlayoffForecast() {
                 key={`${matchup.better_id}-${matchup.worse_id}`}
               >
                 <div className="champions-matchup-teams">
-                  {matchup.better_team ? <TeamBadge team={matchup.better_team} short /> : null}
+                  {matchup.better_team ? (
+                    <TeamBadge team={matchup.better_team} short />
+                  ) : null}
                   <span className="muted">vs</span>
-                  {matchup.worse_team ? <TeamBadge team={matchup.worse_team} short /> : null}
+                  {matchup.worse_team ? (
+                    <TeamBadge team={matchup.worse_team} short />
+                  ) : null}
                 </div>
                 <strong>{formatProbability(matchup.probability)}</strong>
               </div>
             ))}
             {projection.playoff.matchups.length === 0 ? (
-              <p className="muted">No hay emparejamientos con probabilidad suficiente.</p>
+              <p className="muted">
+                No hay emparejamientos con probabilidad suficiente.
+              </p>
             ) : null}
           </div>
         </section>

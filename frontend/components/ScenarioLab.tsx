@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { getProjection, getSeason, postScenario } from "@/lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getProjection, getSeason, postScenario, STATIC_DATA } from "@/lib/api";
+import {
+  DEFAULT_SIMS,
+  LALIGA_MAX_SIMS,
+  LALIGA_SIM_PRESETS,
+  LALIGA_SYNC_API_LIMIT,
+  type SimulationProgress,
+} from "@/lib/sim-config";
 import type {
   Mode,
   Outcome,
@@ -25,13 +32,16 @@ import {
 } from "@/lib/format";
 import { ErrorState, LoadingState } from "@/components/States";
 import { PointsDistribution } from "@/components/PointsDistribution";
+import {
+  SimSizeControl,
+  SimulationProgressNotice,
+} from "@/components/SimSizeControl";
 import { TeamBadge } from "@/components/TeamBadge";
-
-const BASELINE_SIMS = 10_000;
 
 export function ScenarioLab() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const hasExplicitStartRef = useRef(searchParams.has("start"));
   const [state, setState] = useState<ScenarioState>(() =>
     parseScenario(new URLSearchParams(searchParams.toString())),
   );
@@ -41,24 +51,38 @@ export function ScenarioLab() {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [runProgress, setRunProgress] = useState<SimulationProgress | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
 
+  const maxSims = STATIC_DATA ? LALIGA_MAX_SIMS : LALIGA_SYNC_API_LIMIT;
+  const baselineSims = Math.min(state.sims, 25_000);
+
   useEffect(() => {
     const controller = new AbortController();
-    Promise.all([
-      getSeason(controller.signal),
-      getProjection(
-        state.mode,
-        BASELINE_SIMS,
-        state.startMatchday,
-        controller.signal,
-      ),
-    ])
-      .then(([seasonPayload, baselinePayload]) => {
+    getSeason(controller.signal)
+      .then(async (seasonPayload) => {
+        if (controller.signal.aborted) return;
         setSeason(seasonPayload);
+        if (!hasExplicitStartRef.current) {
+          hasExplicitStartRef.current = true;
+          if (state.startMatchday !== seasonPayload.current_matchday) {
+            setState((current) => ({
+              ...current,
+              startMatchday: seasonPayload.current_matchday,
+            }));
+            return;
+          }
+        }
+        const baselinePayload = await getProjection(
+          state.mode,
+          baselineSims,
+          state.startMatchday,
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
         setBaseline(baselinePayload);
         setSelectedTeam(
           (current) => current ?? baselinePayload.teams[0]?.team.id ?? null,
@@ -71,7 +95,7 @@ export function ScenarioLab() {
         setLoading(false);
       });
     return () => controller.abort();
-  }, [state.mode, state.startMatchday, reloadKey]);
+  }, [state.mode, state.startMatchday, baselineSims, reloadKey]);
 
   const hasChanges = useMemo(() => {
     return (
@@ -79,9 +103,10 @@ export function ScenarioLab() {
       Object.keys(state.forced).length > 0 ||
       state.homeAdvantage !== null ||
       state.nu !== null ||
-      state.rho !== null
+      state.rho !== null ||
+      state.sims !== baselineSims
     );
-  }, [state]);
+  }, [state, baselineSims]);
 
   useEffect(() => {
     if (
@@ -104,6 +129,16 @@ export function ScenarioLab() {
     const timer = window.setTimeout(async () => {
       setRunning(true);
       setRunError(null);
+      setRunProgress(
+        state.sims >= 20_000
+          ? {
+              completed: 0,
+              total: state.sims,
+              progress: 0,
+              elapsedSeconds: 0,
+            }
+          : null,
+      );
       try {
         const payload = await postScenario(
           {
@@ -120,6 +155,11 @@ export function ScenarioLab() {
             ...(state.rho !== null ? { rho: state.rho } : {}),
           },
           controller.signal,
+          state.sims >= 20_000
+            ? (progress) => {
+                if (!controller.signal.aborted) setRunProgress(progress);
+              }
+            : undefined,
         );
         setResult(payload);
         router.replace(url, { scroll: false });
@@ -128,8 +168,9 @@ export function ScenarioLab() {
         setRunError(caught instanceof Error ? caught.message : "Error inesperado");
       } finally {
         setRunning(false);
+        setRunProgress(null);
       }
-    }, 650);
+    }, 350);
 
     return () => {
       window.clearTimeout(timer);
@@ -139,7 +180,8 @@ export function ScenarioLab() {
 
   const activeResult =
     result?.mode === state.mode &&
-    result?.start_matchday === state.startMatchday
+    result?.start_matchday === state.startMatchday &&
+    result?.n_sims === state.sims
       ? result
       : null;
   const activeBaseline =
@@ -228,7 +270,10 @@ export function ScenarioLab() {
     }));
     setResult(baseline);
     setShareMessage(null);
-    router.replace(`/escenario?mode=${state.mode}`, { scroll: false });
+    router.replace(
+      `/escenario?mode=${state.mode}&start=${state.startMatchday}`,
+      { scroll: false },
+    );
   }
 
   async function copyShareLink() {
@@ -236,9 +281,13 @@ export function ScenarioLab() {
     const url = `${window.location.origin}/escenario?${params.toString()}`;
     try {
       await navigator.clipboard.writeText(url);
-      setShareMessage("Enlace copiado. Al abrirlo se reconstruye este escenario.");
+      setShareMessage(
+        "Enlace copiado. Al abrirlo se reconstruye este escenario.",
+      );
     } catch {
-      setShareMessage("No se pudo copiar automáticamente. Copia la barra de direcciones.");
+      setShareMessage(
+        "No se pudo copiar automáticamente. Copia la barra de direcciones.",
+      );
     }
   }
 
@@ -304,17 +353,21 @@ export function ScenarioLab() {
           </h1>
           <p className="page-sub">
             Ajusta la fuerza de un equipo o fuerza un resultado de la próxima
-            jornada. La tabla se recalcula y compara cada cambio contra la
-            proyección base.
+            jornada. La tabla se recalcula en tu navegador y compara cada cambio
+            contra la proyección base.
           </p>
         </div>
         <div className="status-row">
           <span className="chip">
             Base J<strong>{state.startMatchday}</strong> ·{" "}
-            {BASELINE_SIMS.toLocaleString("es-ES")} sims
+            {baselineSims.toLocaleString("es-ES")} sims
           </span>
           <span className={`chip ${running ? "chip-accent" : ""}`}>
-            {running ? "Recalculando…" : hasChanges ? "Escenario activo" : "Sin cambios"}
+            {running
+              ? "Recalculando…"
+              : hasChanges
+                ? "Escenario activo"
+                : "Sin cambios"}
           </span>
           <Link href="/" className="btn">
             Volver al panel
@@ -346,6 +399,25 @@ export function ScenarioLab() {
                 Solo 1X2
               </button>
             </div>
+          </div>
+
+          <div className="control-block">
+            <h3>Simulaciones</h3>
+            <p className="control-hint">
+              Por defecto {DEFAULT_SIMS.toLocaleString("es-ES")} para responder
+              rápido en móviles. Sube el tamaño o escribe uno propio para mayor
+              precisión.
+            </p>
+            <SimSizeControl
+              id="scenario-sim-size"
+              variant="panel"
+              value={state.sims}
+              presets={LALIGA_SIM_PRESETS}
+              maxSims={maxSims}
+              onChange={(nextSims) =>
+                setState((current) => ({ ...current, sims: nextSims }))
+              }
+            />
           </div>
 
           <div className="control-block">
@@ -437,7 +509,11 @@ export function ScenarioLab() {
                       <span className="vs">vs</span>
                       <span>{away.short_name}</span>
                     </div>
-                    <div className="force-buttons" role="group" aria-label={`${home.name} contra ${away.name}`}>
+                    <div
+                      className="force-buttons"
+                      role="group"
+                      aria-label={`${home.name} contra ${away.name}`}
+                    >
                       <button
                         type="button"
                         aria-pressed={forced === "H"}
@@ -528,37 +604,32 @@ export function ScenarioLab() {
                 />
                 <output htmlFor="rho">{rho.toFixed(2)}</output>
               </div>
-              <div style={{ marginTop: 14 }}>
-                <span className="controls-label">Simulaciones</span>
-                <div className="segmented" style={{ marginTop: 6 }} role="group" aria-label="Simulaciones del escenario">
-                  {[5000, 10000, 30000].map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-pressed={state.sims === value}
-                      onClick={() =>
-                        setState((current) => ({ ...current, sims: value }))
-                      }
-                    >
-                      {value >= 1000 ? `${value / 1000}k` : value}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           </details>
 
           <div className="control-block">
             <div className="page-actions">
-              <button type="button" className="btn btn-primary" onClick={copyShareLink}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={copyShareLink}
+              >
                 Compartir escenario
               </button>
-              <button type="button" className="btn btn-danger" onClick={resetScenario}>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={resetScenario}
+              >
                 Restablecer
               </button>
             </div>
             {shareMessage ? (
-              <p className="control-hint" style={{ marginTop: 10, marginBottom: 0 }} role="status">
+              <p
+                className="control-hint"
+                style={{ marginTop: 10, marginBottom: 0 }}
+                role="status"
+              >
                 {shareMessage}
               </p>
             ) : null}
@@ -575,6 +646,14 @@ export function ScenarioLab() {
             </div>
           ) : null}
 
+          {isRunning && runProgress ? (
+            <SimulationProgressNotice
+              message={`Recalculando ${state.sims.toLocaleString("es-ES")} temporadas…`}
+              progress={runProgress}
+              running
+            />
+          ) : null}
+
           {runError ? (
             <div className="notice" role="alert">
               <strong>El escenario no se pudo recalcular.</strong>
@@ -586,7 +665,9 @@ export function ScenarioLab() {
             <div className="summary-card">
               <span>Favorito del escenario</span>
               <strong>
-                {currentFavorite ? formatProbability(currentFavorite.champion_probability) : "—"}
+                {currentFavorite
+                  ? formatProbability(currentFavorite.champion_probability)
+                  : "—"}
               </strong>
               <small>{currentFavorite?.team.name ?? "Sin datos"}</small>
             </div>
@@ -615,7 +696,9 @@ export function ScenarioLab() {
                 </span>
               </div>
               <span className={`chip ${running ? "chip-accent" : ""}`}>
-                {isRunning ? "Calculando" : `${(displayResult?.n_sims ?? 0).toLocaleString("es-ES")} sims`}
+                {isRunning
+                  ? "Calculando"
+                  : `${(displayResult?.n_sims ?? 0).toLocaleString("es-ES")} sims`}
               </span>
             </div>
             <div className="panel-body" style={{ paddingTop: 0 }}>
@@ -627,7 +710,9 @@ export function ScenarioLab() {
                       <th scope="col">Campeón base</th>
                       <th scope="col">Campeón esc.</th>
                       <th scope="col">Δ</th>
-                      <th scope="col" className="optional">Top 4 base</th>
+                      <th scope="col" className="optional">
+                        Top 4 base
+                      </th>
                       <th scope="col">Top 4 esc.</th>
                       <th scope="col">Δ</th>
                       <th scope="col">Descenso esc.</th>
@@ -639,7 +724,8 @@ export function ScenarioLab() {
                     {projectionTeams.map((team) => {
                       const base = baselineMap.get(team.team.id);
                       const deltaChampion =
-                        team.champion_probability - (base?.champion_probability ?? 0);
+                        team.champion_probability -
+                        (base?.champion_probability ?? 0);
                       const deltaTop4 =
                         team.top4_probability - (base?.top4_probability ?? 0);
                       const deltaPoints =
@@ -649,26 +735,50 @@ export function ScenarioLab() {
                           <td className="team-cell">
                             <TeamBadge team={team.team} />
                           </td>
-                          <td className="num">{base ? formatProbability(base.champion_probability) : "—"}</td>
-                          <td className="num">{formatProbability(team.champion_probability)}</td>
+                          <td className="num">
+                            {base
+                              ? formatProbability(base.champion_probability)
+                              : "—"}
+                          </td>
+                          <td className="num">
+                            {formatProbability(team.champion_probability)}
+                          </td>
                           <td>
-                            <span className={`delta ${deltaTone(deltaChampion)}`}>
+                            <span
+                              className={`delta ${deltaTone(deltaChampion)}`}
+                            >
                               {formatSignedProbability(deltaChampion)}
                             </span>
                           </td>
                           <td className="num optional">
-                            {base ? formatProbability(base.top4_probability) : "—"}
+                            {base
+                              ? formatProbability(base.top4_probability)
+                              : "—"}
                           </td>
-                          <td className="num">{formatProbability(team.top4_probability)}</td>
+                          <td className="num">
+                            {formatProbability(team.top4_probability)}
+                          </td>
                           <td>
                             <span className={`delta ${deltaTone(deltaTop4)}`}>
                               {formatSignedProbability(deltaTop4)}
                             </span>
                           </td>
-                          <td className="num">{formatProbability(team.relegation_probability)}</td>
-                          <td className="num">{team.expected_points.toFixed(1)}</td>
+                          <td className="num">
+                            {formatProbability(team.relegation_probability)}
+                          </td>
+                          <td className="num">
+                            {team.expected_points.toFixed(1)}
+                          </td>
                           <td>
-                            <span className={`delta ${deltaPoints > 0.05 ? "up" : deltaPoints < -0.05 ? "down" : "flat"}`}>
+                            <span
+                              className={`delta ${
+                                deltaPoints > 0.05
+                                  ? "up"
+                                  : deltaPoints < -0.05
+                                    ? "down"
+                                    : "flat"
+                              }`}
+                            >
                               {formatSignedPoints(deltaPoints)}
                             </span>
                           </td>
@@ -694,10 +804,14 @@ export function ScenarioLab() {
               <div className="panel-body" style={{ display: "grid", gap: 10 }}>
                 <span className="kicker">Detalle del escenario</span>
                 <p className="lead">
-                  {selectedProjection.team.name}: {formatProbability(selectedProjection.champion_probability)} de
-                  título, {formatProbability(selectedProjection.top4_probability)} de Top 4 y{" "}
-                  {formatProbability(selectedProjection.relegation_probability)} de descenso.
-                  Rango de puntos {selectedProjection.p10_points}–{selectedProjection.p90_points}.
+                  {selectedProjection.team.name}:{" "}
+                  {formatProbability(selectedProjection.champion_probability)}{" "}
+                  de título,{" "}
+                  {formatProbability(selectedProjection.top4_probability)} de
+                  Top 4 y{" "}
+                  {formatProbability(selectedProjection.relegation_probability)}{" "}
+                  de descenso. Rango de puntos {selectedProjection.p10_points}–
+                  {selectedProjection.p90_points}.
                 </p>
               </div>
             </section>
