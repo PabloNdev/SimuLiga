@@ -1,7 +1,7 @@
 """Import the real 2026/27 Champions League league-phase fixtures.
 
-Source: UEFA Champions League fixture list (matchdays 1-8). Matchdays 1-4
-(3-4 November 2026) are already played; matchdays 5-8 are pending.
+Source: UEFA Champions League fixture list (matchdays 1-8). Matchdays 1-5
+(24-25 November 2026) are already played; matchdays 6-8 are pending.
 
 Run from ``backend/``:
 
@@ -98,24 +98,24 @@ MATCHDAYS: dict[int, list[tuple[str, str, str, int | None, int | None]]] = {
         ("2026-11-04", "Viking", "Sabah", 4, 1),
     ],
     5: [
-        ("2026-11-24", "Bodø/Glimt", "LASK", None, None),
-        ("2026-11-24", "Galatasaray", "Aston Villa", None, None),
-        ("2026-11-24", "Arsenal", "Borussia Dortmund", None, None),
-        ("2026-11-24", "Como", "AEK Athens", None, None),
-        ("2026-11-24", "Feyenoord", "Porto", None, None),
-        ("2026-11-24", "Manchester City", "Napoli", None, None),
-        ("2026-11-24", "Leipzig", "Lens", None, None),
-        ("2026-11-24", "Real Madrid", "PSV Eindhoven", None, None),
-        ("2026-11-24", "Slovan Bratislava", "Real Betis", None, None),
-        ("2026-11-25", "Sabah", "Barcelona", None, None),
-        ("2026-11-25", "Slavia Praha", "Villarreal", None, None),
-        ("2026-11-25", "Atlético de Madrid", "Viking", None, None),
-        ("2026-11-25", "Club Brugge", "Liverpool", None, None),
-        ("2026-11-25", "Inter", "Stuttgart", None, None),
-        ("2026-11-25", "Shakhtar Donetsk", "Fenerbahçe", None, None),
-        ("2026-11-25", "Lille", "Bayern München", None, None),
-        ("2026-11-25", "Paris Saint-Germain", "Roma", None, None),
-        ("2026-11-25", "Sporting CP", "Manchester United", None, None),
+        ("2026-11-24", "Bodø/Glimt", "LASK", 1, 0),
+        ("2026-11-24", "Galatasaray", "Aston Villa", 1, 0),
+        ("2026-11-24", "Arsenal", "Borussia Dortmund", 1, 1),
+        ("2026-11-24", "Como", "AEK Athens", 1, 0),
+        ("2026-11-24", "Feyenoord", "Porto", 0, 1),
+        ("2026-11-24", "Manchester City", "Napoli", 2, 2),
+        ("2026-11-24", "Leipzig", "Lens", 3, 1),
+        ("2026-11-24", "Real Madrid", "PSV Eindhoven", 5, 1),
+        ("2026-11-24", "Slovan Bratislava", "Real Betis", 0, 2),
+        ("2026-11-25", "Sabah", "Barcelona", 1, 4),
+        ("2026-11-25", "Slavia Praha", "Villarreal", 0, 1),
+        ("2026-11-25", "Atlético de Madrid", "Viking", 2, 0),
+        ("2026-11-25", "Club Brugge", "Liverpool", 0, 3),
+        ("2026-11-25", "Inter", "Stuttgart", 2, 0),
+        ("2026-11-25", "Shakhtar Donetsk", "Fenerbahçe", 0, 1),
+        ("2026-11-25", "Lille", "Bayern München", 2, 1),
+        ("2026-11-25", "Paris Saint-Germain", "Roma", 2, 2),
+        ("2026-11-25", "Sporting CP", "Manchester United", 2, 2),
     ],
     6: [
         ("2026-12-08", "Viking", "Feyenoord", None, None),
@@ -199,7 +199,7 @@ def main() -> None:
             )
 
     assert len(matches) == 144, len(matches)
-    assert sum(1 for match in matches if match["home_goals"] is not None) == 72
+    assert sum(1 for match in matches if match["home_goals"] is not None) == 90
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     path = DATA_DIR / "champions_2026_27.json"
     path.write_text(json.dumps(matches, indent=2, ensure_ascii=False), encoding="utf-8")
