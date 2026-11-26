@@ -81,7 +81,7 @@ function getLaLigaBrowserContext(
   if (!laligaContextPromise) {
     laligaContextPromise = Promise.all([
       staticPayload<SeasonPayload>("season.json"),
-      staticPayload<MatchesPayload>("matches-score.json"),
+      staticPayload<MatchesPayload>("matches-1x2.json"),
       staticPayload<EloPayload>("elo.json").catch(() => null),
     ])
       .then(([season, matchesPayload, eloPayload]) => {

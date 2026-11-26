@@ -16,8 +16,8 @@ export function SiteFooter() {
         </span>
         <span className="footer-long">
           {champions
-            ? "Elo + ClubElo + Davidson + Dixon-Coles · API-Football + OpenFootball"
-            : "Elo propio + Davidson + Dixon-Coles · OpenFootball + football-data.co.uk"}
+            ? "Elo + ClubElo + Davidson · API-Football + OpenFootball"
+            : "Elo propio + Davidson · OpenFootball + football-data.co.uk"}
         </span>
         <Link
           href={champions ? "/champions/metodologia" : "/metodologia"}

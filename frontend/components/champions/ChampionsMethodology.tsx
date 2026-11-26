@@ -110,30 +110,13 @@ P(visitante) = 1 / (r + 1 + nu·√r)`}</pre>
 
         <div className="method-grid">
           <section className="panel method-card">
-            <h2>5 · Marcador exacto</h2>
-            <p>
-              Para los desempates hacen falta goles. Dixon-Coles genera una
-              matriz de marcadores a partir de los goles esperados de cada
-              equipo, corregida para resultados cortos. Las bases de goles, la
-              pendiente ELO y ρ se calibran con los marcadores históricos; H se
-              comparte con el modelo 1X2.
-            </p>
-            <pre className="formula">{`λ_local     = base_local × exp(pendiente × (Elo_local + H − Elo_visitante))
-λ_visitante = base_visitante × exp(−pendiente × (Elo_local + H − Elo_visitante))
-
-P(x, y) = Poisson(x; λ_local) × Poisson(y; λ_visitante) × τ(x, y)`}</pre>
-            <p>
-              La matriz se normaliza y se usa tanto para el marcador más probable
-              como para muestrear resultados en cada simulación.
-            </p>
-          </section>
-
-          <section className="panel method-card">
-            <h2>6 · Simulación</h2>
+            <h2>5 · Simulación</h2>
             <p>
               Cada simulación conserva los partidos reales y juega los
-              pendientes. Se construye la tabla de 36 con los desempates de la
-              Champions.
+              pendientes en formato 1X2 (sin goles simulados). Se construye la
+              tabla de 36 conservando los goles reales ya disputados y
+              resolviendo los desempates por puntos, victorias y sorteo
+              determinista.
             </p>
             <ol className="rules-list">
               <li>Puntos.</li>
@@ -149,30 +132,30 @@ P(x, y) = Poisson(x; λ_local) × Poisson(y; λ_visitante) × τ(x, y)`}</pre>
               cubre el último criterio.
             </p>
           </section>
-        </div>
 
-        <section className="panel method-card">
-          <h2>7 · Playoff y octavos</h2>
-          <p>
-            Los emparejamientos son deterministas: 9 vs 24, 10 vs 23, …, 16 vs
-            17. El mejor clasificado juega la vuelta en casa. Cada eliminatoria
-            se simula a dos partidos con el modelo de marcador.
-          </p>
-          <p>
-            Si el agregado queda empatado, se juegan 30 minutos de prórroga con
-            los goles esperados reducidos a un tercio. Si sigue el empate, los
-            penaltis se resuelven al 50%. No hay regla del gol fuera de casa.
-          </p>
-          <p>
-            La probabilidad de octavos de cada equipo combina acabar entre los
-            ocho primeros y ganar el playoff. No se simulan octavos, cuartos,
-            semifinales ni final en esta versión.
-          </p>
-        </section>
+          <section className="panel method-card">
+            <h2>6 · Playoff y octavos</h2>
+            <p>
+              Los emparejamientos son deterministas: 9 vs 24, 10 vs 23, …, 16 vs
+              17. El mejor clasificado juega la vuelta en casa. Cada eliminatoria
+              se resuelve simulando internamente la eliminatoria a doble partido.
+            </p>
+            <p>
+              Si el agregado queda empatado, se juegan 30 minutos de prórroga
+              con la ventaja reducida a un tercio. Si sigue el empate, los
+              penaltis se resuelven al 50%. No hay regla del gol fuera de casa.
+            </p>
+            <p>
+              La probabilidad de octavos de cada equipo combina acabar entre los
+              ocho primeros y ganar el playoff. No se simulan octavos, cuartos,
+              semifinales ni final en esta versión.
+            </p>
+          </section>
+        </div>
 
         <div className="method-grid">
           <section className="panel method-card">
-            <h2>8 · Qué no es</h2>
+            <h2>7 · Qué no es</h2>
             <ul>
               <li>No incorpora lesiones, sanciones, alineaciones ni mercado.</li>
               <li>El ELO no se actualiza dentro de la simulación.</li>
@@ -183,7 +166,7 @@ P(x, y) = Poisson(x; λ_local) × Poisson(y; λ_visitante) × τ(x, y)`}</pre>
           </section>
 
           <section className="panel method-card">
-            <h2>9 · Reproducibilidad</h2>
+            <h2>8 · Reproducibilidad</h2>
             <p>
               El panel usa 10.000 simulaciones con semilla 42. La misma semilla
               produce el mismo resultado. Los scripts permiten regenerar el

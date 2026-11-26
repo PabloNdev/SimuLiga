@@ -3,7 +3,7 @@ import { ChampionsMethodology } from "@/components/champions/ChampionsMethodolog
 export const metadata = {
   title: "Método · SimuChampions",
   description:
-    "Cómo SimuChampions combina ELO, ClubElo, Davidson, Dixon-Coles y Montecarlo para proyectar la Champions League.",
+    "Cómo SimuChampions combina ELO, ClubElo, Davidson y Montecarlo para proyectar la Champions League.",
 };
 
 export default function ChampionsMethodologyPage() {

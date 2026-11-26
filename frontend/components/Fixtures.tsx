@@ -25,18 +25,19 @@ export function Fixtures({
           const home = teamMap.get(prediction.home_id) as Team | undefined;
           const away = teamMap.get(prediction.away_id) as Team | undefined;
           if (!home || !away) return null;
-          const score = prediction.most_likely_score;
           return (
             <article className="fixture" key={prediction.match_id}>
               <div className="fixture-meta">
                 <span>{home.short_name} vs {away.short_name}</span>
-                <span>{score ? `Marcador probable ${score[0]}-${score[1]}` : "1X2"}</span>
+                <span>
+                  1 {Math.round(prediction.home_probability * 100)}% · X{" "}
+                  {Math.round(prediction.draw_probability * 100)}% · 2{" "}
+                  {Math.round(prediction.away_probability * 100)}%
+                </span>
               </div>
               <div className="fixture-teams">
                 <span>{home.name}</span>
-                <span className="fixture-score">
-                  {score ? `${score[0]}–${score[1]}` : "vs"}
-                </span>
+                <span className="fixture-score">vs</span>
                 <span className="away">{away.name}</span>
               </div>
               <div

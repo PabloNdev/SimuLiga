@@ -4,7 +4,7 @@ import { ValidationPanel } from "@/components/ValidationPanel";
 export const metadata = {
   title: "Método · SimuLiga",
   description:
-    "Cómo SimuLiga combina Elo, Davidson, Dixon-Coles y simulaciones de Montecarlo para proyectar LaLiga.",
+    "Cómo SimuLiga combina Elo, Davidson y simulaciones de Montecarlo para proyectar LaLiga.",
 };
 
 export default function MethodologyPage() {
@@ -77,33 +77,14 @@ P(local) = r / (r + 1 + ν√r)
 P(empate) = ν√r / (r + 1 + ν√r)
 P(visitante) = 1 / (r + 1 + ν√r)`}</pre>
             <p>
-              Las tres probabilidades suman 1. El modo <strong>Solo 1X2</strong>{" "}
-              muestrea únicamente estos tres resultados, por lo que no puede
-              usar goles para desempatar.
+              Las tres probabilidades suman 1. SimuLiga simula cada partido
+              pendiente muestreando uno de estos tres resultados 1X2 (victoria
+              local, empate o victoria visitante).
             </p>
           </section>
 
           <section className="panel method-card">
-            <h2>3 · Marcador exacto</h2>
-            <p>
-              Para el modo de marcador exacto se estiman goles esperados de cada
-              equipo a partir del Elo y la localía. Cada marcador posible se
-              obtiene con una Poisson; la corrección de Dixon-Coles ajusta los
-              resultados cortos (0-0, 1-0, 0-1, 1-1).
-            </p>
-            <pre className="formula">{`λ_local = base_local · exp(pendiente · (Elo_local + ventaja − Elo_visitante))
-λ_visitante = base_visitante · exp(−pendiente · (Elo_local + ventaja − Elo_visitante))
-
-P(x, y) = Poisson(x; λ_local) · Poisson(y; λ_visitante) · τ(x, y)`}</pre>
-            <p>
-              La matriz se normaliza. Con ella se puede extraer el marcador más
-              probable, el 1X2 implícito y, sobre todo, los goles necesarios
-              para aplicar los desempates de LaLiga.
-            </p>
-          </section>
-
-          <section className="panel method-card">
-            <h2>4 · Simulación de Montecarlo</h2>
+            <h2>3 · Simulación de Montecarlo</h2>
             <p>
               Cada temporada simulada juega los 380 partidos: conserva los
               resultados reales y resuelve los pendientes. Se asignan 3 puntos
@@ -128,7 +109,7 @@ P(descenso) = temporadas en los 3 últimos / total`}</pre>
         </div>
 
         <section className="panel method-card">
-          <h2>5 · Desempates de LaLiga</h2>
+          <h2>4 · Desempates de LaLiga</h2>
           <p>
             Cuando dos o más equipos terminan con los mismos puntos, el orden no
             es la diferencia de goles global: primero manda el duelo directo.
@@ -145,9 +126,11 @@ P(descenso) = temporadas en los 3 últimos / total`}</pre>
           </ol>
           <p style={{ marginTop: 14 }}>
             Los criterios de duelo directo solo se aplican cuando todos los
-            partidos entre los equipos implicados se han disputado. Si no, se
-            usan los criterios generales. En el modo 1X2 no hay goles, así que
-            solo se pueden usar los puntos del duelo directo y el sorteo.
+            partidos entre los equipos implicados se han disputado. Como los
+            partidos simulados solo producen resultados 1X2 (sin goles
+            simulados), los desempates usan los puntos del duelo directo
+            (conservando los goles reales ya jugados) y un sorteo neutral si
+            persiste el empate.
           </p>
           <div className="method-note">
             El sorteo final se implementa con una clave aleatoria por simulación.
@@ -158,7 +141,7 @@ P(descenso) = temporadas en los 3 últimos / total`}</pre>
 
         <div className="method-grid">
           <section className="panel method-card">
-            <h2>6 · Datos y actualización</h2>
+            <h2>5 · Datos y actualización</h2>
             <p>
               La app lee calendario y resultados reales de OpenFootball y
               football-data.co.uk. La clave de API-Football solo es necesaria para
@@ -183,7 +166,7 @@ P(descenso) = temporadas en los 3 últimos / total`}</pre>
           </section>
 
           <section className="panel method-card">
-            <h2>7 · Qué no es</h2>
+            <h2>6 · Qué no es</h2>
             <p>
               No es una promesa ni una recomendación de apuestas. Es un modelo
               condicionado a los datos y supuestos actuales. Cambiar un rating,
@@ -193,7 +176,6 @@ P(descenso) = temporadas en los 3 últimos / total`}</pre>
             <ul>
               <li>Las probabilidades no incorporan lesiones, sanciones ni mercado.</li>
               <li>Si no hay clave, la demo usa datos generados; no son resultados reales.</li>
-              <li>El marcador exacto es una distribución, no un pronóstico único.</li>
               <li>El sorteo final solo actúa cuando todos los criterios empatan.</li>
             </ul>
             <p>

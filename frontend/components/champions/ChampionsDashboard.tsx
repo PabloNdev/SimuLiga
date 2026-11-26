@@ -33,12 +33,13 @@ import { LeaguePhaseTable } from "@/components/champions/LeaguePhaseTable";
 import { PositionHeatmap } from "@/components/champions/PositionHeatmap";
 import { ProjectionTable } from "@/components/champions/ProjectionTable";
 
+const SIMULATION_MODE: Mode = "1x2";
+
 export function ChampionsDashboard() {
   const [season, setSeason] = useState<ChampionsSeasonPayload | null>(null);
   const [projection, setProjection] =
     useState<ChampionsProjectionPayload | null>(null);
   const [matches, setMatches] = useState<ChampionsMatchesPayload | null>(null);
-  const [mode, setMode] = useState<Mode>("score");
   const [sims, setSims] = useState<number>(DEFAULT_SIMS);
   const [loading, setLoading] = useState(true);
   const [simulating, setSimulating] = useState(false);
@@ -77,12 +78,6 @@ export function ChampionsDashboard() {
     }
   }
 
-  function changeMode(next: Mode) {
-    if (next === mode) return;
-    beginRunState(sims);
-    setMode(next);
-  }
-
   function changeSims(nextSims: number) {
     if (nextSims === sims) return;
     beginRunState(nextSims);
@@ -111,7 +106,7 @@ export function ChampionsDashboard() {
       getChampionsSeason(controller.signal),
       getChampionsProjection(
         sims,
-        mode,
+        SIMULATION_MODE,
         controller.signal,
         showProgress
           ? (progress) => {
@@ -119,7 +114,7 @@ export function ChampionsDashboard() {
             }
           : undefined,
       ),
-      getChampionsMatches(mode, controller.signal),
+      getChampionsMatches(SIMULATION_MODE, controller.signal),
     ])
       .then(([seasonPayload, projectionPayload, matchesPayload]) => {
         if (controller.signal.aborted) return;
@@ -154,7 +149,7 @@ export function ChampionsDashboard() {
       controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, sims, reloadKey]);
+  }, [sims, reloadKey]);
 
   if (loading && !season) {
     return (
@@ -255,26 +250,6 @@ export function ChampionsDashboard() {
       ) : null}
 
       <div className="controls" role="toolbar" aria-label="Controles de proyección">
-        <span className="controls-label">Resultado</span>
-        <div className="segmented" role="group" aria-label="Modo de simulación">
-          <button
-            type="button"
-            aria-pressed={mode === "score"}
-            onClick={() => changeMode("score")}
-            title="Simula marcadores exactos y usa goles para los desempates."
-          >
-            Marcador exacto
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === "1x2"}
-            onClick={() => changeMode("1x2")}
-            title="Simula solo victoria local, empate o victoria visitante."
-          >
-            Solo 1X2
-          </button>
-        </div>
-
         <span className="controls-label">Simulaciones</span>
         <SimSizeControl
           id="champions-sim-size"
@@ -293,10 +268,10 @@ export function ChampionsDashboard() {
         </Link>
       </div>
       <p className="controls-hint">
-        {mode === "score"
-          ? "Se simulan marcadores exactos para aplicar puntos, diferencia de goles, goles a favor y goles fuera."
-          : "Solo se simula el 1X2: los desempates usan puntos, victorias y sorteo determinista."}
-        {" "}Por defecto {DEFAULT_SIMS.toLocaleString("es-ES")} simulaciones pensando en móviles; ajusta el tamaño si quieres más precisión.
+        Se simula el resultado 1X2 de cada partido pendiente: los desempates
+        usan puntos, victorias y sorteo determinista. Por defecto{" "}
+        {DEFAULT_SIMS.toLocaleString("es-ES")} simulaciones pensando en móviles;
+        ajusta el tamaño si quieres más precisión.
       </p>
 
       {STATIC_DATA ? (
@@ -447,10 +422,11 @@ export function ChampionsDashboard() {
             <p className="lead">
               Una probabilidad del 40% no significa que ocurrirá cuatro de cada
               diez veces en la realidad: significa que ocurrió en el 40% de las
-              temporadas simuladas con los datos y el modelo actuales. La fase
-              de liga no tiene duelos directos para todos: los desempates son
-              puntos, diferencia de goles, goles, goles fuera, victorias,
-              victorias fuera y sorteo.
+              temporadas simuladas con los datos y el modelo actuales. Los
+              partidos pendientes se simulan en formato 1X2 (sin goles
+              simulados), manteniendo los goles reales ya disputados y
+              resolviendo los empates por puntos, victorias y sorteo
+              determinista.
             </p>
             <div className="page-actions">
               <Link href="/champions/playoff" className="link-arrow">

@@ -24,10 +24,11 @@ import { TeamBadge } from "@/components/TeamBadge";
 import { TeamCrest } from "@/components/TeamCrest";
 import { PlayoffBracket } from "@/components/champions/PlayoffBracket";
 
+const SIMULATION_MODE: Mode = "1x2";
+
 export function PlayoffForecast() {
   const [projection, setProjection] =
     useState<ChampionsProjectionPayload | null>(null);
-  const [mode, setMode] = useState<Mode>("score");
   const [sims, setSims] = useState<number>(DEFAULT_SIMS);
   const [simulating, setSimulating] = useState(false);
   const [jobMessage, setJobMessage] = useState<string | null>(null);
@@ -64,12 +65,6 @@ export function PlayoffForecast() {
     }
   }
 
-  function changeMode(next: Mode) {
-    if (next === mode) return;
-    beginRunState(sims);
-    setMode(next);
-  }
-
   function changeSims(nextSims: number) {
     if (nextSims === sims) return;
     beginRunState(nextSims);
@@ -96,7 +91,7 @@ export function PlayoffForecast() {
 
     getChampionsProjection(
       sims,
-      mode,
+      SIMULATION_MODE,
       controller.signal,
       showProgress
         ? (progress) => {
@@ -131,7 +126,7 @@ export function PlayoffForecast() {
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, sims]);
+  }, [sims]);
 
   if (error) {
     return (
@@ -177,24 +172,6 @@ export function PlayoffForecast() {
       </div>
 
       <div className="controls" role="toolbar" aria-label="Controles de playoff">
-        <span className="controls-label">Resultado</span>
-        <div className="segmented" role="group" aria-label="Modo de simulación">
-          <button
-            type="button"
-            aria-pressed={mode === "score"}
-            onClick={() => changeMode("score")}
-          >
-            Marcador exacto
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === "1x2"}
-            onClick={() => changeMode("1x2")}
-          >
-            Solo 1X2
-          </button>
-        </div>
-
         <span className="controls-label">Simulaciones</span>
         <SimSizeControl
           id="playoff-sim-size"

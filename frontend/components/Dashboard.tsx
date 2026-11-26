@@ -31,10 +31,11 @@ import {
 import { TitleRace } from "@/components/TitleRace";
 import { ErrorState, SkeletonPanel } from "@/components/States";
 
+const SIMULATION_MODE: Mode = "1x2";
+
 export function Dashboard() {
   const [season, setSeason] = useState<SeasonPayload | null>(null);
   const [projection, setProjection] = useState<ProjectionPayload | null>(null);
-  const [mode, setMode] = useState<Mode>("score");
   const [sims, setSims] = useState<number>(DEFAULT_SIMS);
   const [metric, setMetric] = useState<Metric>("champion");
   const [startMatchday, setStartMatchday] = useState<number | null>(null);
@@ -104,7 +105,7 @@ export function Dashboard() {
         if (isAsyncBackendJob) {
           const created = await postFullProjection(
             {
-              mode,
+              mode: SIMULATION_MODE,
               sims,
               seed: 42,
               start_matchday: effectiveStart,
@@ -171,7 +172,7 @@ export function Dashboard() {
           });
         } else {
           const projectionPayload = await getProjection(
-            mode,
+            SIMULATION_MODE,
             sims,
             effectiveStart,
             controller.signal,
@@ -224,18 +225,12 @@ export function Dashboard() {
       clearActiveRun();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, sims, startMatchday, reloadKey]);
+  }, [sims, startMatchday, reloadKey]);
 
   function changeStart(nextStart: number) {
     if (nextStart === startMatchday) return;
     beginRunState(sims);
     setStartMatchday(nextStart);
-  }
-
-  function changeMode(nextMode: Mode) {
-    if (nextMode === mode) return;
-    beginRunState(sims);
-    setMode(nextMode);
   }
 
   function changeSims(nextSims: number) {
@@ -370,26 +365,6 @@ export function Dashboard() {
       </div>
 
       <div className="controls" role="toolbar" aria-label="Controles de proyección">
-        <span className="controls-label">Resultado</span>
-        <div className="segmented" role="group" aria-label="Modo de simulación">
-          <button
-            type="button"
-            aria-pressed={mode === "score"}
-            onClick={() => changeMode("score")}
-            title="Simula marcadores exactos y aplica todos los criterios de desempate de LaLiga."
-          >
-            Marcador exacto
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === "1x2"}
-            onClick={() => changeMode("1x2")}
-            title="Simula solo victoria local, empate o victoria visitante."
-          >
-            Solo 1X2
-          </button>
-        </div>
-
         <span className="controls-label">Desde J</span>
         <select
           className="matchday-select"
@@ -550,9 +525,9 @@ export function Dashboard() {
               Una probabilidad del 30% no significa que ocurrirá tres de cada
               diez veces en la realidad: significa que ocurrió en el 30% de las
               temporadas simuladas con los datos y el modelo actuales. Si dos
-              equipos terminan con los mismos puntos, se aplican los criterios
-              de LaLiga: primero los duelos directos y después la diferencia de
-              goles.
+              equipos terminan con los mismos puntos, el desempate aplica los
+              puntos de los duelos directos y, si persiste la igualdad, un
+              sorteo neutral.
             </p>
             <div className="page-actions">
               <Link href="/metodologia" className="link-arrow">

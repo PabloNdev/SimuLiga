@@ -12,7 +12,6 @@ import {
   type SimulationProgress,
 } from "@/lib/sim-config";
 import type {
-  Mode,
   Outcome,
   ProjectionPayload,
   SeasonPayload,
@@ -103,7 +102,6 @@ export function ScenarioLab() {
       Object.keys(state.forced).length > 0 ||
       state.homeAdvantage !== null ||
       state.nu !== null ||
-      state.rho !== null ||
       state.sims !== baselineSims
     );
   }, [state, baselineSims]);
@@ -152,7 +150,6 @@ export function ScenarioLab() {
               ? { home_advantage: state.homeAdvantage }
               : {}),
             ...(state.nu !== null ? { nu: state.nu } : {}),
-            ...(state.rho !== null ? { rho: state.rho } : {}),
           },
           controller.signal,
           state.sims >= 20_000
@@ -191,12 +188,6 @@ export function ScenarioLab() {
       : null;
   const displayResult = hasChanges ? activeResult : activeBaseline;
   const isRunning = running && hasChanges;
-
-  function changeMode(nextMode: Mode) {
-    if (nextMode === state.mode) return;
-    setLoadError(null);
-    setState((current) => ({ ...current, mode: nextMode }));
-  }
 
   const teamMap = useMemo(
     () => new Map((season?.teams ?? []).map((team) => [team.id, team])),
@@ -265,15 +256,11 @@ export function ScenarioLab() {
   function resetScenario() {
     setState((current) => ({
       ...DEFAULT_SCENARIO,
-      mode: current.mode,
       startMatchday: current.startMatchday,
     }));
     setResult(baseline);
     setShareMessage(null);
-    router.replace(
-      `/escenario?mode=${state.mode}&start=${state.startMatchday}`,
-      { scroll: false },
-    );
+    router.replace(`/escenario?start=${state.startMatchday}`, { scroll: false });
   }
 
   async function copyShareLink() {
@@ -337,11 +324,9 @@ export function ScenarioLab() {
   const effectiveModel = modelDefaults ?? {
     homeAdvantage: 60,
     nu: 0.9,
-    rho: -0.05,
   };
   const homeAdvantage = state.homeAdvantage ?? effectiveModel.homeAdvantage;
   const nu = state.nu ?? effectiveModel.nu;
-  const rho = state.rho ?? effectiveModel.rho;
 
   return (
     <div className="container">
@@ -377,30 +362,6 @@ export function ScenarioLab() {
 
       <div className="scenario-layout">
         <aside className="panel scenario-controls">
-          <div className="control-block">
-            <h3>Modo</h3>
-            <p className="control-hint">
-              El marcador exacto aplica goles y todos los desempates. El modo
-              1X2 solo usa victoria, empate o derrota.
-            </p>
-            <div className="segmented" role="group" aria-label="Modo del escenario">
-              <button
-                type="button"
-                aria-pressed={state.mode === "score"}
-                onClick={() => changeMode("score")}
-              >
-                Marcador exacto
-              </button>
-              <button
-                type="button"
-                aria-pressed={state.mode === "1x2"}
-                onClick={() => changeMode("1x2")}
-              >
-                Solo 1X2
-              </button>
-            </div>
-          </div>
-
           <div className="control-block">
             <h3>Simulaciones</h3>
             <p className="control-hint">
@@ -585,24 +546,6 @@ export function ScenarioLab() {
                   }
                 />
                 <output htmlFor="nu">{nu.toFixed(2)}</output>
-              </div>
-              <div className="slider-row">
-                <label htmlFor="rho">ρ goles</label>
-                <input
-                  id="rho"
-                  type="range"
-                  min={-0.15}
-                  max={0.05}
-                  step={0.01}
-                  value={rho}
-                  onChange={(event) =>
-                    setState((current) => ({
-                      ...current,
-                      rho: Number(event.target.value),
-                    }))
-                  }
-                />
-                <output htmlFor="rho">{rho.toFixed(2)}</output>
               </div>
             </div>
           </details>

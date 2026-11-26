@@ -11,18 +11,16 @@ export interface ScenarioState {
   forced: Record<string, Outcome>;
   homeAdvantage: number | null;
   nu: number | null;
-  rho: number | null;
   sims: number;
   startMatchday: number;
 }
 
 export const DEFAULT_SCENARIO: ScenarioState = {
-  mode: "score",
+  mode: "1x2",
   elo: {},
   forced: {},
   homeAdvantage: null,
   nu: null,
-  rho: null,
   sims: DEFAULT_SIMS,
   startMatchday: 10,
 };
@@ -30,19 +28,17 @@ export const DEFAULT_SCENARIO: ScenarioState = {
 export interface ScenarioModelDefaults {
   homeAdvantage: number;
   nu: number;
-  rho: number;
 }
 
 export function modelParamDefaults(model: ModelInfo): ScenarioModelDefaults {
   return {
     homeAdvantage: model.davidson.home_advantage,
     nu: model.davidson.nu,
-    rho: model.scoreline.rho,
   };
 }
 
 export function parseScenario(params: URLSearchParams): ScenarioState {
-  const mode = params.get("mode") === "1x2" ? "1x2" : "score";
+  const mode: Mode = "1x2";
   const elo: Record<string, number> = {};
   const forced: Record<string, Outcome> = {};
 
@@ -85,7 +81,6 @@ export function parseScenario(params: URLSearchParams): ScenarioState {
     forced,
     homeAdvantage: numberOrNull("h"),
     nu: numberOrNull("nu"),
-    rho: numberOrNull("rho"),
     sims: clampSimSize(
       numberOrDefault("sims", DEFAULT_SCENARIO.sims),
       LALIGA_MAX_SIMS,
@@ -99,7 +94,6 @@ export function parseScenario(params: URLSearchParams): ScenarioState {
 
 export function buildScenarioParams(state: ScenarioState): URLSearchParams {
   const params = new URLSearchParams();
-  params.set("mode", state.mode);
 
   const elo = Object.entries(state.elo)
     .filter(([, value]) => Math.abs(value) >= 1)
@@ -117,9 +111,6 @@ export function buildScenarioParams(state: ScenarioState): URLSearchParams {
   }
   if (state.nu !== null) {
     params.set("nu", state.nu.toFixed(3));
-  }
-  if (state.rho !== null) {
-    params.set("rho", state.rho.toFixed(3));
   }
   if (state.sims !== DEFAULT_SCENARIO.sims) {
     params.set("sims", String(state.sims));

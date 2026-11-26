@@ -36,7 +36,7 @@ function getChampionsBrowserContext(
   if (!championsContextPromise) {
     championsContextPromise = Promise.all([
       staticPayload<ChampionsSeasonPayload>("champions-season.json"),
-      staticPayload<ChampionsMatchesPayload>("champions-matches-score.json"),
+      staticPayload<ChampionsMatchesPayload>("champions-matches-1x2.json"),
     ])
       .then(([season, matchesPayload]) => ({
         season,
@@ -130,7 +130,7 @@ export function getChampionsSeason(
 
 export async function getChampionsProjection(
   sims = DEFAULT_SIMS,
-  mode: Mode = "score",
+  mode: Mode = "1x2",
   signal?: AbortSignal,
   onProgress?: (progress: SimulationProgress) => void,
   seed = 42,
@@ -180,7 +180,7 @@ export async function getChampionsProjection(
 }
 
 export function getChampionsMatches(
-  mode: Mode = "score",
+  mode: Mode = "1x2",
   signal?: AbortSignal,
 ): Promise<ChampionsMatchesPayload> {
   if (STATIC_DATA) {

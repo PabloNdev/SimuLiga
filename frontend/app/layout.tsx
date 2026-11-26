@@ -30,7 +30,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "SimuLiga · LaLiga 2026/27",
   description:
-    "Simulador visual de LaLiga: probabilidades de campeón, Top 4 y descenso, resultados exactos y escenarios interactivos.",
+    "Simulador visual de LaLiga: probabilidades de campeón, Top 4 y descenso, probabilidades 1X2 y escenarios interactivos.",
 };
 
 const themeScript = `(function(){try{var t=localStorage.getItem("simuliga-theme");var m=window.matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.dataset.theme=t||(m?"dark":"light");}catch(e){}})();`;

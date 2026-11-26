@@ -249,9 +249,7 @@ export function ProjectionTable({
                               score[0] != null &&
                               score[1] != null
                                 ? `${score[0]}–${score[1]}`
-                                : match.most_likely_score
-                                  ? `${match.most_likely_score[0]}–${match.most_likely_score[1]}`
-                                  : "—";
+                                : "—";
                             const hasProbabilities =
                               match.home_probability != null &&
                               match.draw_probability != null &&
@@ -296,7 +294,7 @@ export function ProjectionTable({
                                   >
                                     {match.status === "played"
                                       ? resultLabel(result)
-                                      : "Previsto"}
+                                      : "Pendiente"}
                                   </span>
                                 </div>
                                 <div className="projection-match-forecast">

@@ -43,7 +43,7 @@ export function ChampionsMatches({
           <span className="panel-note">
             Fase de liga · jornada {matchday} · C casa · E empate · V visitante
             <br />
-            Jugado: resultado real · Pendiente: marcador probable y signo
+            Jugado: resultado real · Pendiente: probabilidades 1X2 y signo
             esperado
           </span>
         </div>
@@ -89,8 +89,6 @@ export function ChampionsMatches({
           >
             {pending.map((match) => {
               const sign = expectedSign(match);
-              const score = match.most_likely_score;
-              const scoreLabel = score ? `${score[0]}–${score[1]}` : "vs";
               const homeProbability = match.home_probability ?? 0;
               const drawProbability = match.draw_probability ?? 0;
               const awayProbability = match.away_probability ?? 0;
@@ -104,17 +102,11 @@ export function ChampionsMatches({
                     <span>
                       {match.home.short_name} vs {match.away.short_name}
                     </span>
-                    <span>
-                      {score
-                        ? `Marcador probable ${scoreLabel}`
-                        : "Previsión 1X2"}
-                    </span>
+                    <span>Previsión 1X2</span>
                   </div>
                   <div className="fixture-teams">
                     <span>{match.home.name}</span>
-                    <span className="fixture-score" title="Marcador más probable">
-                      {scoreLabel}
-                    </span>
+                    <span className="fixture-score">vs</span>
                     <span className="away">{match.away.name}</span>
                   </div>
                   <div
